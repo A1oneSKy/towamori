@@ -1,6 +1,6 @@
 [Unit]
 Description=Towamori host agent
-Documentation=https://github.com/towamori/agent
+Documentation=https://github.com/A1oneSKy/towamori
 Wants=network-online.target
 After=network-online.target
 

@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install towamori-agent as a systemd service.
 #
-#   curl -fsSL https://raw.githubusercontent.com/towamori/agent/main/packaging/install.sh \
+#   curl -fsSL https://raw.githubusercontent.com/A1oneSKy/towamori/main/packaging/install.sh \
 #     | sudo TOWAMORI_TOKEN=<your token> sh
 #
 # Optional: TOWAMORI_VERSION=0.1.0 to pin a release, TOWAMORI_ENDPOINT to override the endpoint,
@@ -9,7 +9,7 @@
 # Running it again upgrades the binary and keeps your existing /etc/towamori/agent.env.
 set -eu
 
-REPO="towamori/agent"
+REPO="A1oneSKy/towamori"
 BIN="/usr/local/bin/towamori-agent"
 CONF_DIR="/etc/towamori"
 CONF="$CONF_DIR/agent.env"
@@ -78,7 +78,7 @@ fi
 cat >"$UNIT" <<'UNIT_EOF'
 [Unit]
 Description=Towamori host agent
-Documentation=https://github.com/towamori/agent
+Documentation=https://github.com/A1oneSKy/towamori
 Wants=network-online.target
 After=network-online.target
 
