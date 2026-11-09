@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 // fakeSource returns samples with increasing timestamps 1, 2, 3, ...

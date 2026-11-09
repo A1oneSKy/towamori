@@ -52,6 +52,20 @@ copy [`packaging/systemd/towamori-agent.service`](packaging/systemd/towamori-age
 `/etc/systemd/system/`, create `/etc/towamori/agent.env` with your token, then run
 `systemctl enable --now towamori-agent`.
 
+No sudo, or prefer Docker? Run the agent in a container that still measures the host
+(build the image from [`packaging/docker/Dockerfile`](packaging/docker/Dockerfile)):
+
+```sh
+docker run -d --name towamori-agent --restart unless-stopped \
+  --pid host --network host --uts host \
+  -v /:/host:ro,rslave -e TOWAMORI_HOST_ROOT=/host \
+  --env-file /etc/towamori/agent.env \
+  towamori-agent
+```
+
+`TOWAMORI_HOST_ROOT` tells the agent where the host's `/` is mounted; it then reads the host's
+mount table instead of the container's.
+
 Check it is running:
 
 ```sh
@@ -79,6 +93,7 @@ Settings are read from flags, then environment variables, then `/etc/towamori/ag
 | `-endpoint` | `TOWAMORI_ENDPOINT` | `https://ingest.towamori.com` | Where to send metrics. |
 | `-interval` | `TOWAMORI_INTERVAL` | `10s` | How often to collect, 5s–300s. Your plan may set a different interval. |
 | `-env-file` | | `/etc/towamori/agent.env` | Ignored if it does not exist. |
+| `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | Where the host's `/` is mounted when the agent runs in a container. |
 | `-once` | | | Print one reading and exit. No token or network needed. |
 | `-print` | | | Also print every request body to stdout. |
 | `-version` | | | Print the version and exit. |

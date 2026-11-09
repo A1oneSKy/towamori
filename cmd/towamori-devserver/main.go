@@ -23,7 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 // A small Ubuntu VPS, read twice ten seconds apart.
@@ -115,8 +115,9 @@ func newTestCollector(t *testing.T) (*Collector, string, *time.Time) {
 		"/mnt/data":    {total: 4000 << 30, free: 2000 << 30, avail: 2000 << 30},
 	}
 	c := &Collector{
-		root:  root,
-		linux: true,
+		root:       root,
+		mountsFile: "proc/self/mounts",
+		linux:      true,
 		statfs: func(p string) (fsStats, error) {
 			rel := "/" + strings.TrimPrefix(strings.TrimPrefix(p, root), "/")
 			st, ok := disks[rel]
@@ -327,4 +328,28 @@ func hasMount(ds []protocol.Disk, m string) bool {
 		}
 	}
 	return false
+}
+
+func TestNewPicksMountTableForHostRoot(t *testing.T) {
+	if c := New("/"); c.mountsFile != "proc/self/mounts" || c.root != "/" {
+		t.Errorf("native: %+v", c)
+	}
+	if c := New("/host/"); c.mountsFile != "proc/1/mounts" || c.root != "/host/" {
+		t.Errorf("container: %+v", c)
+	}
+}
+
+func TestHostRootReadsInitMountTable(t *testing.T) {
+	c, root, _ := newTestCollector(t)
+	// In a container, proc/self/mounts would list the container's overlay;
+	// the host's real disks are in proc/1/mounts.
+	writeFiles(t, root, map[string]string{
+		"proc/self/mounts": "overlay / overlay rw 0 0\n",
+		"proc/1/mounts":    "/dev/vda1 / ext4 rw 0 0\n",
+	})
+	c.mountsFile = "proc/1/mounts"
+	s, _ := c.Sample()
+	if len(s.Disks) != 1 || s.Disks[0].Mount != "/" || s.Disks[0].FSType != "ext4" {
+		t.Errorf("disks = %+v", s.Disks)
+	}
 }

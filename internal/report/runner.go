@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 // Source produces readings; collect.Collector implements it.

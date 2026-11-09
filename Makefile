@@ -20,7 +20,7 @@ dist: clean
 		dir=dist/towamori-agent_linux_$$arch; mkdir -p $$dir; \
 		CGO_ENABLED=0 GOOS=linux GOARCH=$$arch go build -trimpath -ldflags "$(LDFLAGS)" -o $$dir/towamori-agent ./cmd/towamori-agent; \
 		cp LICENSE README.md $$dir/; \
-		tar -czf dist/towamori-agent_linux_$$arch.tar.gz -C $$dir towamori-agent LICENSE README.md; \
+		COPYFILE_DISABLE=1 tar --no-xattrs -czf dist/towamori-agent_linux_$$arch.tar.gz -C $$dir towamori-agent LICENSE README.md; \
 		rm -r $$dir; \
 	done
 	cd dist && shasum -a 256 *.tar.gz > checksums.txt

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 // StatusError is a non-2xx answer from the platform.

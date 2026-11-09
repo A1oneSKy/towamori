@@ -4,7 +4,8 @@
 #   curl -fsSL https://raw.githubusercontent.com/towamori/agent/main/packaging/install.sh \
 #     | sudo TOWAMORI_TOKEN=<your token> sh
 #
-# Optional: TOWAMORI_VERSION=0.1.0 to pin a release, TOWAMORI_ENDPOINT to override the endpoint.
+# Optional: TOWAMORI_VERSION=0.1.0 to pin a release, TOWAMORI_ENDPOINT to override the endpoint,
+# TOWAMORI_DOWNLOAD_BASE=https://… to download from somewhere other than GitHub releases.
 # Running it again upgrades the binary and keeps your existing /etc/towamori/agent.env.
 set -eu
 
@@ -34,7 +35,13 @@ if [ -z "${TOWAMORI_TOKEN:-}" ] && [ ! -f "$CONF" ]; then
 fi
 
 VERSION="${TOWAMORI_VERSION:-latest}"
-if [ "$VERSION" = "latest" ]; then
+if [ -n "${TOWAMORI_DOWNLOAD_BASE:-}" ]; then
+  # Download from a Towamori platform's /dl/ instead of GitHub releases.
+  case "$TOWAMORI_DOWNLOAD_BASE" in
+    https://*) BASE="${TOWAMORI_DOWNLOAD_BASE%/}" ;;
+    *) die "TOWAMORI_DOWNLOAD_BASE must be an https:// URL" ;;
+  esac
+elif [ "$VERSION" = "latest" ]; then
   BASE="https://github.com/$REPO/releases/latest/download"
 else
   BASE="https://github.com/$REPO/releases/download/v${VERSION#v}"

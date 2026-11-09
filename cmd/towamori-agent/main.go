@@ -19,9 +19,9 @@ import (
 
 	"github.com/towamori/agent/internal/collect"
 	"github.com/towamori/agent/internal/config"
-	"github.com/towamori/agent/internal/protocol"
 	"github.com/towamori/agent/internal/report"
 	"github.com/towamori/agent/internal/version"
+	"github.com/towamori/agent/protocol"
 )
 
 func main() {
@@ -39,7 +39,7 @@ func main() {
 	}
 
 	agent := protocol.AgentInfo{Version: version.Version, OS: runtime.GOOS, Arch: runtime.GOARCH}
-	col := collect.New()
+	col := collect.New(cfg.HostRoot)
 
 	if cfg.Once {
 		if err := once(col, agent); err != nil {
@@ -50,8 +50,8 @@ func main() {
 	}
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
-	logger.Printf("towamori-agent %s starting: endpoint=%s token=%s interval=%s",
-		version.Version, cfg.Endpoint, config.Redact(cfg.Token), cfg.Interval)
+	logger.Printf("towamori-agent %s starting: endpoint=%s token=%s interval=%s host-root=%s",
+		version.Version, cfg.Endpoint, config.Redact(cfg.Token), cfg.Interval, cfg.HostRoot)
 
 	client := report.NewClient(cfg.Endpoint, cfg.Token, agent)
 	if cfg.Print {

@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 // ErrUnsupported is reported when metrics are requested on an operating
@@ -47,6 +47,7 @@ type Collector struct {
 	linux         bool
 	statfs        func(path string) (fsStats, error)
 	statfsTimeout time.Duration
+	mountsFile    string // relative to root
 	now           func() time.Time
 	numCPU        func() int
 	prev          *counters
@@ -58,10 +59,23 @@ type Collector struct {
 // DefaultStatfsTimeout bounds how long one filesystem may take to answer.
 const DefaultStatfsTimeout = 2 * time.Second
 
-// New returns a Collector for this machine.
-func New() *Collector {
+// New returns a Collector for this machine. hostRoot is "/" normally; when
+// the agent runs in a container with the host's root filesystem mounted
+// somewhere else (docker run -v /:/host:ro --pid=host --network=host
+// --uts=host), pass that mount point. The mount table is then read from the
+// host's init process, because /proc/self/mounts would describe the
+// container.
+func New(hostRoot string) *Collector {
+	if hostRoot == "" {
+		hostRoot = "/"
+	}
+	mountsFile := "proc/self/mounts"
+	if filepath.Clean(hostRoot) != "/" {
+		mountsFile = "proc/1/mounts"
+	}
 	return &Collector{
-		root:          "/",
+		root:          hostRoot,
+		mountsFile:    mountsFile,
 		linux:         runtime.GOOS == "linux",
 		statfs:        statfs,
 		statfsTimeout: DefaultStatfsTimeout,
@@ -133,6 +147,8 @@ func (c *Collector) read(rel string) (string, error) {
 func (c *Collector) Host() protocol.HostInfo {
 	h := protocol.HostInfo{CPUCores: c.numCPU()}
 	if s, err := c.read("proc/sys/kernel/hostname"); err == nil && strings.TrimSpace(s) != "" {
+		h.Hostname = strings.TrimSpace(s)
+	} else if s, err := c.read("etc/hostname"); err == nil && strings.TrimSpace(s) != "" {
 		h.Hostname = strings.TrimSpace(s)
 	} else if n, err := os.Hostname(); err == nil {
 		h.Hostname = n
@@ -254,7 +270,7 @@ func (c *Collector) Sample() (protocol.Sample, []error) {
 		note(err)
 	}
 
-	if d, err := c.read("proc/self/mounts"); err == nil {
+	if d, err := c.read(c.mountsFile); err == nil {
 		s.Disks = c.disks(parseMounts(d), note)
 	} else {
 		note(err)

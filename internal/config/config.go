@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/towamori/agent/internal/protocol"
+	"github.com/towamori/agent/protocol"
 )
 
 const (
@@ -30,6 +30,7 @@ type Config struct {
 	Token    string
 	Interval time.Duration
 	EnvFile  string
+	HostRoot string // where the host's / is mounted; "/" unless running in a container
 
 	Once    bool // collect one sample, print it, exit; no network
 	Print   bool // also print every report body to stdout
@@ -46,6 +47,7 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 		token    = fs.String("token", "", "agent token from the dashboard (env TOWAMORI_TOKEN)")
 		interval = fs.Duration("interval", 0, "how often to collect, 5s-300s (env TOWAMORI_INTERVAL, default 10s)")
 		envFile  = fs.String("env-file", DefaultEnvFile, "file with KEY=VALUE settings; ignored if missing")
+		hostRoot = fs.String("host-root", "", "where the host's / is mounted when running in a container (env TOWAMORI_HOST_ROOT, default /)")
 		once     = fs.Bool("once", false, "collect one sample, print the JSON that would be sent, and exit (no network)")
 		print    = fs.Bool("print", false, "also print every report body to stdout")
 		version  = fs.Bool("version", false, "print the version and exit")
@@ -80,6 +82,7 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 	c.Endpoint = firstNonEmpty(*endpoint, lookup("TOWAMORI_ENDPOINT"), DefaultEndpoint)
 	c.Endpoint = strings.TrimRight(c.Endpoint, "/")
 	c.Token = firstNonEmpty(*token, lookup("TOWAMORI_TOKEN"))
+	c.HostRoot = firstNonEmpty(*hostRoot, lookup("TOWAMORI_HOST_ROOT"), "/")
 
 	c.Interval = DefaultInterval
 	if *interval != 0 {
@@ -94,6 +97,10 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 	min, max := time.Duration(protocol.MinInterval)*time.Second, time.Duration(protocol.MaxInterval)*time.Second
 	if c.Interval < min || c.Interval > max {
 		return nil, fmt.Errorf("interval must be between %s and %s, got %s", min, max, c.Interval)
+	}
+
+	if st, err := os.Stat(c.HostRoot); err != nil || !st.IsDir() {
+		return nil, fmt.Errorf("host root %q is not a directory", c.HostRoot)
 	}
 
 	if c.Once {
