@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: make test
+      - run: make dist
+      # On a real Linux runner the agent can read /proc: make sure a reading works.
+      - name: smoke test
+        run: |
+          go run ./cmd/towamori-agent --once > once.json
+          grep -q '"cpu"' once.json && grep -q '"mem"' once.json && grep -q '"disks"' once.json

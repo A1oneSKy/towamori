@@ -1,0 +1,41 @@
+[Unit]
+Description=Towamori host agent
+Documentation=https://github.com/towamori/agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/towamori-agent
+# Read by systemd itself before privileges are dropped, so it can stay root-only (0600).
+EnvironmentFile=-/etc/towamori/agent.env
+Restart=always
+RestartSec=5
+
+# Run as a throwaway unprivileged user with a read-only view of the system.
+DynamicUser=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+# read-only rather than yes, so statfs still works on /home if it is a separate disk.
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target
