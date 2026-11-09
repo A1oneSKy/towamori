@@ -11,10 +11,14 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      # Release binaries are built with the current stable Go so that they get
+      # its standard-library security fixes; go.mod only states the minimum.
+      - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: stable
+          cache: false # no third-party modules, nothing to cache
+      - run: go version
       - run: make test
       - run: make dist VERSION="${GITHUB_REF_NAME#v}"
       - name: publish
