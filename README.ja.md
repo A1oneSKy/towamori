@@ -52,9 +52,9 @@ Linux サーバーの CPU・メモリ・ディスク・ネットワークの指�
 
 ```mermaid
 flowchart LR
-  A["あなたのサーバー<br/>towamori-agent"] -->|"HTTPS POST<br/>10 秒ごと"| B["Towamori<br/>ingest.towamori.com"]
+  A["サーバー<br/>towamori-agent"] -->|"HTTPS POST<br/>10 秒ごと"| B["Towamori<br/>ingest.towamori.com"]
   B -.->|"変えられるのは<br/>送信間隔だけ"| A
-  B --> C["あなたのダッシュボード"]
+  B --> C["ダッシュボード"]
 ```
 
 - **エンドポイントは 2 つ。** 起動時に一度だけ `hello` でマシンの基本情報を送り、その後は読み取るたびに `report` を送ります。
