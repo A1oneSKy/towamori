@@ -52,12 +52,9 @@ You are installing a long-running program on your server, so here is exactly wha
 
 ```mermaid
 flowchart LR
-  subgraph host["Your Linux server"]
-    proc["/proc and statfs"] -->|read every 10 s| agent["towamori-agent"]
-  end
-  agent -->|"HTTPS POST, gzip JSON<br/>hello on start, then report"| ingest["ingest.towamori.com"]
-  ingest -.->|"200 / 202, may only change<br/>the interval (5 to 300 s)"| agent
-  ingest --> app["Your dashboard<br/>app.towamori.com"]
+  A["Your server<br/>towamori-agent"] -->|"HTTPS POST<br/>every 10 s"| B["Towamori<br/>ingest.towamori.com"]
+  B -.->|"may only change<br/>the interval"| A
+  B --> C["Your dashboard"]
 ```
 
 - **Two endpoints.** `hello` once at start-up with a few facts about the machine, then `report` after every reading.

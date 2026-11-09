@@ -52,12 +52,9 @@ Linux サーバーの CPU・メモリ・ディスク・ネットワークの指�
 
 ```mermaid
 flowchart LR
-  subgraph host["あなたの Linux サーバー"]
-    proc["/proc と statfs"] -->|10 秒ごとに読み取り| agent["towamori-agent"]
-  end
-  agent -->|"HTTPS POST・gzip 圧縮 JSON<br/>起動時に hello、以降は report"| ingest["ingest.towamori.com"]
-  ingest -.->|"200 / 202。変えられるのは<br/>送信間隔（5〜300 秒）だけ"| agent
-  ingest --> app["あなたのダッシュボード<br/>app.towamori.com"]
+  A["あなたのサーバー<br/>towamori-agent"] -->|"HTTPS POST<br/>10 秒ごと"| B["Towamori<br/>ingest.towamori.com"]
+  B -.->|"変えられるのは<br/>送信間隔だけ"| A
+  B --> C["あなたのダッシュボード"]
 ```
 
 - **エンドポイントは 2 つ。** 起動時に一度だけ `hello` でマシンの基本情報を送り、その後は読み取るたびに `report` を送ります。

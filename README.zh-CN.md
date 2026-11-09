@@ -52,12 +52,9 @@
 
 ```mermaid
 flowchart LR
-  subgraph host["你的 Linux 服务器"]
-    proc["/proc 和 statfs"] -->|每 10 秒读一次| agent["towamori-agent"]
-  end
-  agent -->|"HTTPS POST，gzip 压缩的 JSON<br/>启动时 hello，之后 report"| ingest["ingest.towamori.com"]
-  ingest -.->|"200 / 202，最多只能调整<br/>上报间隔（5 到 300 秒）"| agent
-  ingest --> app["你的控制台<br/>app.towamori.com"]
+  A["你的服务器<br/>towamori-agent"] -->|"HTTPS POST<br/>每 10 秒"| B["Towamori<br/>ingest.towamori.com"]
+  B -.->|"只能调整<br/>上报间隔"| A
+  B --> C["你的控制台"]
 ```
 
 - **只有两个接口。** 启动时调用一次 `hello`，报告机器的基本信息；之后每读一次就调用一次 `report`。

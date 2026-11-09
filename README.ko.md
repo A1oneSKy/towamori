@@ -52,12 +52,9 @@ Linux 서버의 CPU, 메모리, 디스크, 네트워크 지표를 읽어 HTTPS�
 
 ```mermaid
 flowchart LR
-  subgraph host["내 Linux 서버"]
-    proc["/proc 및 statfs"] -->|10초마다 읽기| agent["towamori-agent"]
-  end
-  agent -->|"HTTPS POST, gzip 압축 JSON<br/>시작 시 hello, 이후 report"| ingest["ingest.towamori.com"]
-  ingest -.->|"200 / 202, 바꿀 수 있는 것은<br/>보고 간격(5~300초)뿐"| agent
-  ingest --> app["내 대시보드<br/>app.towamori.com"]
+  A["내 서버<br/>towamori-agent"] -->|"HTTPS POST<br/>10초마다"| B["Towamori<br/>ingest.towamori.com"]
+  B -.->|"바꿀 수 있는 것은<br/>보고 간격뿐"| A
+  B --> C["내 대시보드"]
 ```
 
 - **엔드포인트는 두 개.** 시작할 때 한 번 `hello`로 머신의 기본 정보를 보내고, 이후 측정할 때마다 `report`를 보냅니다.
