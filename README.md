@@ -5,123 +5,24 @@
   <img alt="Towamori Agent" src="docs/images/banner-light.svg" width="100%">
 </picture>
 
-### The server agent you can read in an afternoon.
-
-The open-source host agent for [Towamori](https://towamori.com) server monitoring.<br>
-It reads CPU, memory, disk and network metrics on a Linux server and sends them over HTTPS. Nothing else.
-
-[![CI](https://img.shields.io/github/actions/workflow/status/A1oneSKy/towamori/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/A1oneSKy/towamori/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/A1oneSKy/towamori?style=flat-square&color=3d4fd8)](https://github.com/A1oneSKy/towamori/releases/latest)
-[![License](https://img.shields.io/badge/license-Apache--2.0-3d4fd8?style=flat-square)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.22%2B-00ADD8?style=flat-square&logo=go&logoColor=white)](go.mod)
-[![Platforms](https://img.shields.io/badge/linux-amd64%20%7C%20arm64-62676f?style=flat-square&logo=linux&logoColor=white)](https://github.com/A1oneSKy/towamori/releases/latest)
+Sends a Linux server's CPU, memory, disk and network to [Towamori](https://towamori.com).
 
 **English** · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 </div>
 
-<br>
+## Install
 
-| **0** | **0** | **2** | **~1.8k** |
-|:---:|:---:|:---:|:---:|
-| ports it listens on | third-party dependencies | endpoints it ever calls | lines of Go, tests excluded |
-
-## What it will never do
-
-You are installing a long-running program on your server, so here is exactly what it can and cannot do, and how to check each claim yourself.
-
-| | Promise | Check it yourself |
-|:---:|---|---|
-| 📤 | **Outbound only.** It never listens on a port. | `sudo ss -ltnup \| grep towamori` prints nothing. |
-| 🚫 | **No remote control.** It never accepts commands: no shell, no terminal, no file access on request. The only thing the platform can change is how often it reports (5–300 seconds). | The whole protocol is two `POST` requests: [`docs/protocol.md`](docs/protocol.md). |
-| 👤 | **No root needed.** The systemd unit runs it as a throwaway unprivileged user with a read-only view of the system and a 64 MB memory cap. | `DynamicUser=yes`, `ProtectSystem=strict` in [the unit file](packaging/systemd/towamori-agent.service). |
-| 🔢 | **Numbers, not data.** No process names, command lines, environment variables, file contents, logs or user accounts. | `towamori-agent --once` prints everything it would send. |
-| 🔒 | **No plain-text tokens.** It refuses to send its token over `http://` unless the target is `localhost`. | `towamori-agent -token x -endpoint http://example.com` refuses to start. |
-| ✅ | **Verified downloads.** The install script checks the SHA-256 checksum before installing anything. | Read [`packaging/install.sh`](packaging/install.sh); it is short. |
-
-## What you get
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/console-dark.png">
-  <img alt="A server in the Towamori dashboard: CPU, memory, load, disk, network and disk I/O charts" src="docs/images/console-light.png">
-</picture>
-
-<p align="center"><sub>A server in the Towamori dashboard, fed by this agent (demo data).</sub></p>
-
-## How it works
-
-```mermaid
-flowchart LR
-  A["Your server<br/>towamori-agent"] -->|"HTTPS POST<br/>every 10 s"| B["Towamori<br/>ingest.towamori.com"]
-  B -.->|"may only change<br/>the interval"| A
-  B --> C["Your dashboard"]
-```
-
-- **Two endpoints.** `hello` once at start-up with a few facts about the machine, then `report` after every reading.
-- **Survives outages.** When Towamori cannot be reached it keeps up to 360 readings in memory (an hour at the default interval) and sends them later, oldest first, retrying with exponential backoff.
-- **Small and boring on purpose.** Go standard library only, a single static binary, no plugins, no auto-update.
-
-## Quick start
-
-### 1. Look before you install
-
-```sh
-curl -fsSLO https://github.com/A1oneSKy/towamori/releases/latest/download/towamori-agent_linux_amd64.tar.gz
-tar -xzf towamori-agent_linux_amd64.tar.gz towamori-agent
-./towamori-agent --once
-```
-
-This takes two readings one second apart and prints the `hello` and `report` request bodies as JSON, without touching the network. That output is everything the agent ever sends. (Use `arm64` instead of `amd64` on ARM servers.)
-
-<details>
-<summary>Example output (abridged)</summary>
-
-```json
-{
-  "hello": {
-    "protocol": 1,
-    "agent": { "version": "0.1.1", "os": "linux", "arch": "amd64" },
-    "host": {
-      "hostname": "web-1",
-      "machine_id": "3f1c9a0e5b7d2c4a8e6f1b3d5a7c9e0f",
-      "os_pretty": "Ubuntu 24.04.1 LTS",
-      "kernel": "6.8.0-45-generic",
-      "cpu_model": "AMD EPYC 7763 64-Core Processor",
-      "cpu_cores": 2,
-      "memory_total": 2061135872
-    }
-  },
-  "report": {
-    "protocol": 1,
-    "samples": [
-      {
-        "ts": 1794200010,
-        "cpu": { "usage": 7.5, "user": 5.0, "system": 2.0, "iowait": 0.25, "steal": 0.25 },
-        "load": { "l1": 0.12, "l5": 0.08, "l15": 0.05 },
-        "mem": { "total": 2061135872, "available": 1288490188, "used": 772645684 },
-        "disks": [{ "mount": "/", "fstype": "ext4", "total": 41943040000, "used": 12582912000 }],
-        "disk_io": { "read_bps": 0, "write_bps": 40960 },
-        "net": { "rx_bps": 2048.5, "tx_bps": 1024.25 }
-      }
-    ]
-  }
-}
-```
-
-`machine_id` is not your raw `/etc/machine-id` but a salted SHA-256 of it. The platform only uses it to notice one token being used on two machines.
-
-</details>
-
-### 2. Install
-
-On a Linux server with systemd (amd64 or arm64), with the token from your Towamori dashboard:
+Get the token from your Towamori dashboard, then run on the server (Linux with systemd, amd64 or arm64):
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/A1oneSKy/towamori/main/packaging/install.sh \
   | sudo TOWAMORI_TOKEN=<your token> sh
 ```
 
-The script downloads the latest release, checks it against the published SHA-256 checksums, installs it to `/usr/local/bin`, writes your token to `/etc/towamori/agent.env` (readable only by root) and starts the `towamori-agent` service. Running it again without `TOWAMORI_TOKEN` upgrades the binary and keeps your existing settings.
+That's it. The server shows up in your dashboard a few seconds later.
+
+Run the same command without `TOWAMORI_TOKEN` to upgrade.
 
 <details>
 <summary><b>Manual install</b></summary>
@@ -180,7 +81,110 @@ sudo systemctl daemon-reload
 
 </details>
 
-## Configuration
+## What you get
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/console-dark.png">
+  <img alt="A server in the Towamori dashboard: CPU, memory, load, disk, network and disk I/O charts" src="docs/images/console-light.png">
+</picture>
+
+<p align="center"><sub>A server in the Towamori dashboard, fed by this agent (demo data).</sub></p>
+
+## What it will never do
+
+- **Outbound only.** Opens no ports.
+- **No remote control.** Can't run commands or touch files.
+- **No root.** Runs as a throwaway unprivileged user.
+- **Numbers only.** No process names, files or logs.
+- **No plain-text tokens.** Refuses `http://` except to localhost.
+- **Verified downloads.** The installer checks SHA-256.
+
+<details>
+<summary><b>How to check each one yourself</b></summary>
+
+| Promise | Check it yourself |
+|---|---|
+| Outbound only. | `sudo ss -ltnup \| grep towamori` prints nothing. |
+| No remote control. | The whole protocol is two `POST` requests: [`docs/protocol.md`](docs/protocol.md). |
+| No root needed. | `DynamicUser=yes`, `ProtectSystem=strict` in [the unit file](packaging/systemd/towamori-agent.service). |
+| Numbers, not data. | `towamori-agent --once` prints everything it would send. |
+| No plain-text tokens. | `towamori-agent -token x -endpoint http://example.com` refuses to start. |
+| Verified downloads. | Read [`packaging/install.sh`](packaging/install.sh); it is short. |
+
+</details>
+
+## More
+
+<details>
+<summary><b>Look before you install</b></summary>
+
+```sh
+curl -fsSLO https://github.com/A1oneSKy/towamori/releases/latest/download/towamori-agent_linux_amd64.tar.gz
+tar -xzf towamori-agent_linux_amd64.tar.gz towamori-agent
+./towamori-agent --once
+```
+
+This takes two readings one second apart and prints the `hello` and `report` request bodies as JSON, without touching the network. That output is everything the agent ever sends. (Use `arm64` instead of `amd64` on ARM servers.)
+
+<details>
+<summary>Example output (abridged)</summary>
+
+```json
+{
+  "hello": {
+    "protocol": 1,
+    "agent": { "version": "0.1.1", "os": "linux", "arch": "amd64" },
+    "host": {
+      "hostname": "web-1",
+      "machine_id": "3f1c9a0e5b7d2c4a8e6f1b3d5a7c9e0f",
+      "os_pretty": "Ubuntu 24.04.1 LTS",
+      "kernel": "6.8.0-45-generic",
+      "cpu_model": "AMD EPYC 7763 64-Core Processor",
+      "cpu_cores": 2,
+      "memory_total": 2061135872
+    }
+  },
+  "report": {
+    "protocol": 1,
+    "samples": [
+      {
+        "ts": 1794200010,
+        "cpu": { "usage": 7.5, "user": 5.0, "system": 2.0, "iowait": 0.25, "steal": 0.25 },
+        "load": { "l1": 0.12, "l5": 0.08, "l15": 0.05 },
+        "mem": { "total": 2061135872, "available": 1288490188, "used": 772645684 },
+        "disks": [{ "mount": "/", "fstype": "ext4", "total": 41943040000, "used": 12582912000 }],
+        "disk_io": { "read_bps": 0, "write_bps": 40960 },
+        "net": { "rx_bps": 2048.5, "tx_bps": 1024.25 }
+      }
+    ]
+  }
+}
+```
+
+`machine_id` is not your raw `/etc/machine-id` but a salted SHA-256 of it. The platform only uses it to notice one token being used on two machines.
+
+</details>
+
+</details>
+
+<details>
+<summary><b>How it works</b></summary>
+
+```mermaid
+flowchart LR
+  A["Your server<br/>towamori-agent"] -->|"HTTPS POST<br/>every 10 s"| B["Towamori<br/>ingest.towamori.com"]
+  B -.->|"may only change<br/>the interval"| A
+  B --> C["Your dashboard"]
+```
+
+- **Two endpoints.** `hello` once at start-up with a few facts about the machine, then `report` after every reading.
+- **Survives outages.** When Towamori cannot be reached it keeps up to 360 readings in memory (an hour at the default interval) and sends them later, oldest first, retrying with exponential backoff.
+- **Small and boring on purpose.** Go standard library only, a single static binary, no plugins, no auto-update.
+
+</details>
+
+<details>
+<summary><b>Configuration</b></summary>
 
 Settings are read from flags, then environment variables, then `/etc/towamori/agent.env` (`KEY=VALUE` lines).
 
@@ -200,7 +204,10 @@ Settings are read from flags, then environment variables, then `/etc/towamori/ag
 
 The agent honours the standard `HTTPS_PROXY` and `NO_PROXY` environment variables.
 
-## What it collects
+</details>
+
+<details>
+<summary><b>What it collects</b></summary>
 
 | Group | Fields | Read from |
 |---|---|---|
@@ -215,7 +222,10 @@ The agent honours the standard `HTTPS_PROXY` and `NO_PROXY` environment variable
 
 The full wire format, field by field, is in [`docs/protocol.md`](docs/protocol.md). Metrics are collected on Linux only; on other systems the agent runs (handy for development) but sends host information only.
 
-## Build from source
+</details>
+
+<details>
+<summary><b>Build from source</b></summary>
 
 Go 1.22 or newer, nothing else:
 
@@ -227,7 +237,10 @@ make dist     # dist/: static linux/amd64 and linux/arm64 archives + checksums.t
 
 Release binaries are built by [GitHub Actions](.github/workflows/release.yml) with the current stable Go.
 
-## Develop against a local server
+</details>
+
+<details>
+<summary><b>Develop against a local server</b></summary>
 
 `towamori-devserver` is a small stand-in for the platform. It checks every request against the protocol and prints one line per sample.
 
@@ -235,6 +248,8 @@ Release binaries are built by [GitHub Actions](.github/workflows/release.yml) wi
 go run ./cmd/towamori-devserver -token dev
 go run ./cmd/towamori-agent -env-file "" -endpoint http://127.0.0.1:8787 -token dev
 ```
+
+</details>
 
 ## Contributing, security, license
 

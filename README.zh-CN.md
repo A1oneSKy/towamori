@@ -5,123 +5,24 @@
   <img alt="Towamori Agent" src="docs/images/banner-light.svg" width="100%">
 </picture>
 
-### 一个下午就能读完的服务器 Agent。
-
-[Towamori](https://towamori.com) 服务器监控的开源主机 Agent。<br>
-它在 Linux 服务器上读取 CPU、内存、磁盘和网络指标，通过 HTTPS 发出去，仅此而已。
-
-[![CI](https://img.shields.io/github/actions/workflow/status/A1oneSKy/towamori/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/A1oneSKy/towamori/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/A1oneSKy/towamori?style=flat-square&color=3d4fd8)](https://github.com/A1oneSKy/towamori/releases/latest)
-[![License](https://img.shields.io/badge/license-Apache--2.0-3d4fd8?style=flat-square)](LICENSE)
-[![Go](https://img.shields.io/badge/go-1.22%2B-00ADD8?style=flat-square&logo=go&logoColor=white)](go.mod)
-[![Platforms](https://img.shields.io/badge/linux-amd64%20%7C%20arm64-62676f?style=flat-square&logo=linux&logoColor=white)](https://github.com/A1oneSKy/towamori/releases/latest)
+把 Linux 服务器的 CPU、内存、磁盘和网络发到 [Towamori](https://towamori.com)。
 
 [English](README.md) · **简体中文** · [日本語](README.ja.md) · [한국어](README.ko.md)
 
 </div>
 
-<br>
+## 安装
 
-| **0** | **0** | **2** | **~1.8k** |
-|:---:|:---:|:---:|:---:|
-| 监听的端口 | 第三方依赖 | 会调用的接口 | 行 Go 代码（不含测试） |
-
-## 它永远不会做的事
-
-你要在服务器上装一个常驻程序，所以这里写清楚它能做什么、不能做什么，以及每一条你可以怎么自己验证。
-
-| | 承诺 | 自己验证 |
-|:---:|---|---|
-| 📤 | **只往外连。** 不监听任何端口。 | `sudo ss -ltnup \| grep towamori` 没有任何输出。 |
-| 🚫 | **不能被远程控制。** 不接受任何命令：不能开 shell、不能开终端、不能按要求读写文件。平台唯一能改的是上报间隔（5–300 秒）。 | 整个协议只有两个 `POST` 请求：[`docs/protocol.md`](docs/protocol.md)（英文）。 |
-| 👤 | **不需要 root。** systemd 单元用一个临时的非特权用户运行它，整个系统对它只读，内存上限 64 MB。 | [单元文件](packaging/systemd/towamori-agent.service)里的 `DynamicUser=yes`、`ProtectSystem=strict`。 |
-| 🔢 | **只发数字，不发数据。** 不读进程名、命令行、环境变量、文件内容、日志和用户账号。 | `towamori-agent --once` 会打印出它要发送的全部内容。 |
-| 🔒 | **不明文传 token。** 目标不是 `localhost` 时，拒绝通过 `http://` 发送 token。 | `towamori-agent -token x -endpoint http://example.com` 会拒绝启动。 |
-| ✅ | **下载有校验。** 安装脚本先核对 SHA-256，再安装。 | 读一下 [`packaging/install.sh`](packaging/install.sh)，很短。 |
-
-## 装好之后能看到什么
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/console-dark.png">
-  <img alt="Towamori 控制台里的一台服务器：CPU、内存、负载、磁盘、网络和磁盘 I/O 曲线" src="docs/images/console-light.png">
-</picture>
-
-<p align="center"><sub>Towamori 控制台里的一台服务器，数据由这个 Agent 上报（演示数据）。</sub></p>
-
-## 工作原理
-
-```mermaid
-flowchart LR
-  A["你的服务器<br/>towamori-agent"] -->|"HTTPS POST<br/>每 10 秒"| B["Towamori<br/>ingest.towamori.com"]
-  B -.->|"只能调整<br/>上报间隔"| A
-  B --> C["你的控制台"]
-```
-
-- **只有两个接口。** 启动时调用一次 `hello`，报告机器的基本信息；之后每读一次就调用一次 `report`。
-- **断网不丢数据。** 连不上 Towamori 时，最多在内存里保留 360 次读数（默认间隔下是一小时），恢复后按时间顺序补发，重试间隔按指数退避。
-- **刻意做得小而无聊。** 只用 Go 标准库，一个静态二进制文件，没有插件，不会自动更新。
-
-## 快速开始
-
-### 1. 装之前先看看
-
-```sh
-curl -fsSLO https://github.com/A1oneSKy/towamori/releases/latest/download/towamori-agent_linux_amd64.tar.gz
-tar -xzf towamori-agent_linux_amd64.tar.gz towamori-agent
-./towamori-agent --once
-```
-
-它会间隔一秒读两次，把 `hello` 和 `report` 的请求体以 JSON 打印出来，不联网。这就是 Agent 会发送的全部内容。（ARM 服务器把 `amd64` 换成 `arm64`。）
-
-<details>
-<summary>输出示例（有删节）</summary>
-
-```json
-{
-  "hello": {
-    "protocol": 1,
-    "agent": { "version": "0.1.1", "os": "linux", "arch": "amd64" },
-    "host": {
-      "hostname": "web-1",
-      "machine_id": "3f1c9a0e5b7d2c4a8e6f1b3d5a7c9e0f",
-      "os_pretty": "Ubuntu 24.04.1 LTS",
-      "kernel": "6.8.0-45-generic",
-      "cpu_model": "AMD EPYC 7763 64-Core Processor",
-      "cpu_cores": 2,
-      "memory_total": 2061135872
-    }
-  },
-  "report": {
-    "protocol": 1,
-    "samples": [
-      {
-        "ts": 1794200010,
-        "cpu": { "usage": 7.5, "user": 5.0, "system": 2.0, "iowait": 0.25, "steal": 0.25 },
-        "load": { "l1": 0.12, "l5": 0.08, "l15": 0.05 },
-        "mem": { "total": 2061135872, "available": 1288490188, "used": 772645684 },
-        "disks": [{ "mount": "/", "fstype": "ext4", "total": 41943040000, "used": 12582912000 }],
-        "disk_io": { "read_bps": 0, "write_bps": 40960 },
-        "net": { "rx_bps": 2048.5, "tx_bps": 1024.25 }
-      }
-    ]
-  }
-}
-```
-
-`machine_id` 不是你原始的 `/etc/machine-id`，而是它加盐后的 SHA-256。平台只用它来发现同一个 token 被用在了两台机器上。
-
-</details>
-
-### 2. 安装
-
-在装有 systemd 的 Linux 服务器上（amd64 或 arm64），用控制台里拿到的 token：
+在 Towamori 控制台拿到 token，然后在服务器上运行（带 systemd 的 Linux，amd64 或 arm64）：
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/A1oneSKy/towamori/main/packaging/install.sh \
   | sudo TOWAMORI_TOKEN=<your token> sh
 ```
 
-脚本会下载最新版本，按发布的 SHA-256 校验和核对，安装到 `/usr/local/bin`，把 token 写进 `/etc/towamori/agent.env`（只有 root 能读），然后启动 `towamori-agent` 服务。不带 `TOWAMORI_TOKEN` 再运行一次，就只升级二进制文件、保留现有配置。
+就这样。几秒后服务器就会出现在控制台里。
+
+去掉 `TOWAMORI_TOKEN` 再运行一次，就是升级。
 
 <details>
 <summary><b>手动安装</b></summary>
@@ -180,7 +81,110 @@ sudo systemctl daemon-reload
 
 </details>
 
-## 配置
+## 装好之后能看到什么
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/console-dark.png">
+  <img alt="Towamori 控制台里的一台服务器：CPU、内存、负载、磁盘、网络和磁盘 I/O 曲线" src="docs/images/console-light.png">
+</picture>
+
+<p align="center"><sub>Towamori 控制台里的一台服务器，数据由这个 Agent 上报（演示数据）。</sub></p>
+
+## 它永远不会做的事
+
+- **只往外连。** 不开端口。
+- **不能远程控制。** 不执行命令，不碰文件。
+- **不需要 root。** 用临时的普通用户运行。
+- **只发数字。** 不发进程名、文件或日志。
+- **不明文传 token。** 除了 localhost，拒绝用 `http://`。
+- **下载有校验。** 安装前核对 SHA-256。
+
+<details>
+<summary><b>每一条怎么自己验证</b></summary>
+
+| 承诺 | 自己验证 |
+|---|---|
+| 只往外连。 | `sudo ss -ltnup \| grep towamori` 没有任何输出。 |
+| 不能被远程控制。 | 整个协议只有两个 `POST` 请求：[`docs/protocol.md`](docs/protocol.md)（英文）。 |
+| 不需要 root。 | [单元文件](packaging/systemd/towamori-agent.service)里的 `DynamicUser=yes`、`ProtectSystem=strict`。 |
+| 只发数字，不发数据。 | `towamori-agent --once` 会打印出它要发送的全部内容。 |
+| 不明文传 token。 | `towamori-agent -token x -endpoint http://example.com` 会拒绝启动。 |
+| 下载有校验。 | 读一下 [`packaging/install.sh`](packaging/install.sh)，很短。 |
+
+</details>
+
+## 更多
+
+<details>
+<summary><b>装之前先看看</b></summary>
+
+```sh
+curl -fsSLO https://github.com/A1oneSKy/towamori/releases/latest/download/towamori-agent_linux_amd64.tar.gz
+tar -xzf towamori-agent_linux_amd64.tar.gz towamori-agent
+./towamori-agent --once
+```
+
+它会间隔一秒读两次，把 `hello` 和 `report` 的请求体以 JSON 打印出来，不联网。这就是 Agent 会发送的全部内容。（ARM 服务器把 `amd64` 换成 `arm64`。）
+
+<details>
+<summary>输出示例（有删节）</summary>
+
+```json
+{
+  "hello": {
+    "protocol": 1,
+    "agent": { "version": "0.1.1", "os": "linux", "arch": "amd64" },
+    "host": {
+      "hostname": "web-1",
+      "machine_id": "3f1c9a0e5b7d2c4a8e6f1b3d5a7c9e0f",
+      "os_pretty": "Ubuntu 24.04.1 LTS",
+      "kernel": "6.8.0-45-generic",
+      "cpu_model": "AMD EPYC 7763 64-Core Processor",
+      "cpu_cores": 2,
+      "memory_total": 2061135872
+    }
+  },
+  "report": {
+    "protocol": 1,
+    "samples": [
+      {
+        "ts": 1794200010,
+        "cpu": { "usage": 7.5, "user": 5.0, "system": 2.0, "iowait": 0.25, "steal": 0.25 },
+        "load": { "l1": 0.12, "l5": 0.08, "l15": 0.05 },
+        "mem": { "total": 2061135872, "available": 1288490188, "used": 772645684 },
+        "disks": [{ "mount": "/", "fstype": "ext4", "total": 41943040000, "used": 12582912000 }],
+        "disk_io": { "read_bps": 0, "write_bps": 40960 },
+        "net": { "rx_bps": 2048.5, "tx_bps": 1024.25 }
+      }
+    ]
+  }
+}
+```
+
+`machine_id` 不是你原始的 `/etc/machine-id`，而是它加盐后的 SHA-256。平台只用它来发现同一个 token 被用在了两台机器上。
+
+</details>
+
+</details>
+
+<details>
+<summary><b>工作原理</b></summary>
+
+```mermaid
+flowchart LR
+  A["你的服务器<br/>towamori-agent"] -->|"HTTPS POST<br/>每 10 秒"| B["Towamori<br/>ingest.towamori.com"]
+  B -.->|"只能调整<br/>上报间隔"| A
+  B --> C["你的控制台"]
+```
+
+- **只有两个接口。** 启动时调用一次 `hello`，报告机器的基本信息；之后每读一次就调用一次 `report`。
+- **断网不丢数据。** 连不上 Towamori 时，最多在内存里保留 360 次读数（默认间隔下是一小时），恢复后按时间顺序补发，重试间隔按指数退避。
+- **刻意做得小而无聊。** 只用 Go 标准库，一个静态二进制文件，没有插件，不会自动更新。
+
+</details>
+
+<details>
+<summary><b>配置</b></summary>
 
 依次读取命令行参数、环境变量、`/etc/towamori/agent.env`（每行 `KEY=VALUE`）。
 
@@ -200,7 +204,10 @@ sudo systemctl daemon-reload
 
 Agent 遵循标准的 `HTTPS_PROXY` 和 `NO_PROXY` 环境变量。
 
-## 采集哪些数据
+</details>
+
+<details>
+<summary><b>采集哪些数据</b></summary>
 
 | 类别 | 字段 | 读取来源 |
 |---|---|---|
@@ -215,7 +222,10 @@ Agent 遵循标准的 `HTTPS_PROXY` 和 `NO_PROXY` 环境变量。
 
 完整的数据格式逐字段写在 [`docs/protocol.md`](docs/protocol.md)（英文）。指标只在 Linux 上采集；在其他系统上 Agent 也能运行（方便开发），但只发送主机信息。
 
-## 从源码构建
+</details>
+
+<details>
+<summary><b>从源码构建</b></summary>
 
 只需要 Go 1.22 或更新版本：
 
@@ -227,7 +237,10 @@ make dist     # dist/：linux/amd64 和 linux/arm64 静态包 + checksums.txt
 
 发布用的二进制由 [GitHub Actions](.github/workflows/release.yml) 用当前稳定版 Go 构建。
 
-## 对接本地服务器开发
+</details>
+
+<details>
+<summary><b>对接本地服务器开发</b></summary>
 
 `towamori-devserver` 是一个小小的平台替身：按协议检查每个请求，每条读数打印一行。
 
@@ -235,6 +248,8 @@ make dist     # dist/：linux/amd64 和 linux/arm64 静态包 + checksums.txt
 go run ./cmd/towamori-devserver -token dev
 go run ./cmd/towamori-agent -env-file "" -endpoint http://127.0.0.1:8787 -token dev
 ```
+
+</details>
 
 ## 贡献、安全、许可证
 
@@ -246,5 +261,5 @@ go run ./cmd/towamori-agent -env-file "" -endpoint http://127.0.0.1:8787 -token 
 <br>
 
 <div align="center">
-<sub><b>towa</b> 永遠 — 永远 &nbsp;·&nbsp; <b>mori</b> 守り — 守望</sub>
+<sub><b>towa</b> 永遠 — 永远 &nbsp;·&nbsp; <b>mori</b> 守り — 守护</sub>
 </div>
