@@ -13,14 +13,16 @@ Linux 서버의 CPU, 메모리, 디스크, 네트워크를 [Towamori](https://to
 
 ## 설치
 
-Towamori 콘솔에서 토큰을 받은 뒤, 서버에서 다음을 실행하세요 (systemd를 쓰는 Linux, amd64 / arm64):
+1. [Towamori 콘솔](https://app.towamori.com)에서 **서버 추가**를 누릅니다.
+2. 표시된 명령어를 복사해 서버에서 실행합니다.
+
+몇 초 뒤 호스트 이름으로 된 서버가 콘솔에 나타납니다. systemd를 쓰는 Linux(amd64 / arm64)를 지원합니다.
+
+명령어는 이런 모양입니다 (토큰은 이미 들어 있습니다):
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/A1oneSKy/towamori/main/packaging/install.sh \
-  | sudo TOWAMORI_TOKEN=<your token> sh
+curl -fsSL https://app.towamori.com/install.sh | sudo TOWAMORI_TOKEN=twa_… sh
 ```
-
-이게 전부입니다. 몇 초 뒤 서버가 콘솔에 나타납니다.
 
 `TOWAMORI_TOKEN` 없이 같은 명령어를 실행하면 업그레이드됩니다.
 
