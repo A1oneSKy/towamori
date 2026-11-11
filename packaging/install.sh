@@ -1,8 +1,11 @@
 #!/bin/sh
 # Install towamori-agent as a systemd service.
 #
-#   curl -fsSL https://raw.githubusercontent.com/A1oneSKy/towamori/main/packaging/install.sh \
-#     | sudo TOWAMORI_TOKEN=<your token> sh
+#   curl -fsSL https://app.towamori.com/install.sh | sudo sh
+#
+# Without a token it prints a pairing code; type it in the Towamori console
+# (Add server) and the script picks up the server's token by itself.
+# With TOWAMORI_TOKEN=<token> set it skips pairing, for scripted installs.
 #
 # Optional: TOWAMORI_VERSION=0.1.0 to pin a release, TOWAMORI_ENDPOINT to override the endpoint,
 # TOWAMORI_DOWNLOAD_BASE=https://… to download from somewhere other than GitHub releases.
@@ -30,9 +33,48 @@ case "$(uname -m)" in
   *) die "unsupported CPU architecture: $(uname -m)" ;;
 esac
 
-if [ -z "${TOWAMORI_TOKEN:-}" ] && [ ! -f "$CONF" ]; then
-  die "set TOWAMORI_TOKEN (copy it from your Towamori dashboard)"
-fi
+APP_URL="${TOWAMORI_APP_URL:-https://app.towamori.com}"
+APP_URL="${APP_URL%/}"
+
+# pair asks the platform for a code, shows it, and waits until someone adds
+# the server in the console. It sets TOWAMORI_TOKEN.
+pair() {
+  host="$(cat /proc/sys/kernel/hostname 2>/dev/null || hostname)"
+  resp="$(curl -fsS -X POST --data-urlencode "hostname=$host" "$APP_URL/v1/pair")" \
+    || die "could not reach $APP_URL to get a pairing code"
+  code="$(printf '%s\n' "$resp" | sed -n 's/^code=//p')"
+  secret="$(printf '%s\n' "$resp" | sed -n 's/^secret=//p')"
+  url="$(printf '%s\n' "$resp" | sed -n 's/^url=//p')"
+  [ -n "$code" ] && [ -n "$secret" ] || die "unexpected answer from $APP_URL"
+
+  printf '\n'
+  printf '  ┌──────────────────────────────────────────────┐\n'
+  printf '  │  Pairing code:  %-29s│\n' "$code"
+  printf '  └──────────────────────────────────────────────┘\n'
+  printf '\n'
+  printf '  Towamori console → Add server → enter the code,\n'
+  printf '  or open: %s\n' "$url"
+  printf '\n'
+  say "waiting to be added (the code is valid for 15 minutes; Ctrl-C to stop)"
+
+  i=0
+  while [ "$i" -lt 450 ]; do
+    sleep 2
+    i=$((i + 1))
+    out="$(curl -sS -o "$TMP/pair" -w '%{http_code}' "$APP_URL/v1/pair/$secret" 2>/dev/null || true)"
+    case "$out" in
+      200)
+        TOWAMORI_TOKEN="$(sed -n 's/^token=//p' "$TMP/pair")"
+        rm -f "$TMP/pair"
+        [ -n "$TOWAMORI_TOKEN" ] || die "unexpected answer from $APP_URL"
+        say "added to your account"
+        return 0
+        ;;
+      404) die "the pairing code expired; run the command again" ;;
+    esac
+  done
+  die "nobody entered the code in time; run the command again"
+}
 
 VERSION="${TOWAMORI_VERSION:-latest}"
 if [ -n "${TOWAMORI_DOWNLOAD_BASE:-}" ]; then
@@ -61,6 +103,10 @@ say "verifying checksum"
 
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP" towamori-agent
 install -m 0755 "$TMP/towamori-agent" "$BIN"
+
+if [ -z "${TOWAMORI_TOKEN:-}" ] && [ ! -f "$CONF" ]; then
+  pair
+fi
 
 install -d -m 0755 "$CONF_DIR"
 if [ -n "${TOWAMORI_TOKEN:-}" ]; then

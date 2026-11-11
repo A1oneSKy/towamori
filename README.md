@@ -13,18 +13,19 @@ Sends a Linux server's CPU, memory, disk and network to [Towamori](https://towam
 
 ## Install
 
-1. In the [Towamori console](https://app.towamori.com), click **Add server**.
-2. Copy the command it shows and run it on the server.
+1. Run this on the server (Linux with systemd, amd64 or arm64):
 
-The server shows up in the console a few seconds later, named after its hostname. Linux with systemd, amd64 or arm64.
+   ```sh
+   curl -fsSL https://app.towamori.com/install.sh | sudo sh
+   ```
 
-The command looks like this (your token is already filled in):
+2. It prints a pairing code. In the [Towamori console](https://app.towamori.com), click **Add server** and enter the code.
 
-```sh
-curl -fsSL https://app.towamori.com/install.sh | sudo TOWAMORI_TOKEN=twa_… sh
-```
+That's it. The server shows up a few seconds later, named after its hostname.
 
-Run the same command without `TOWAMORI_TOKEN` to upgrade.
+For scripts: add `TOWAMORI_TOKEN=<token>` after `sudo` to skip the code (the console makes such a command too).
+
+Run the same command again to upgrade; your settings are kept.
 
 <details>
 <summary><b>Manual install</b></summary>

@@ -13,18 +13,19 @@ Linux サーバーの CPU・メモリ・ディスク・ネットワークを [To
 
 ## インストール
 
-1. [Towamori コンソール](https://app.towamori.com)で **サーバーを追加** を押します。
-2. 表示されたコマンドをコピーして、サーバーで実行します。
+1. サーバーで実行します（systemd を使う Linux、amd64 / arm64）：
 
-数秒後、ホスト名の付いたサーバーがコンソールに表示されます。systemd を使う Linux（amd64 / arm64）に対応。
+   ```sh
+   curl -fsSL https://app.towamori.com/install.sh | sudo sh
+   ```
 
-コマンドはこのような形です（トークンは入力済み）：
+2. ペアリングコードが表示されます。[Towamori コンソール](https://app.towamori.com)で **サーバーを追加** を押し、コードを入力します。
 
-```sh
-curl -fsSL https://app.towamori.com/install.sh | sudo TOWAMORI_TOKEN=twa_… sh
-```
+これだけです。数秒でホスト名の付いたサーバーが表示されます。
 
-`TOWAMORI_TOKEN` なしで同じコマンドを実行するとアップグレードです。
+スクリプトで入れる場合は、`sudo` の後に `TOWAMORI_TOKEN=<token>` を付けるとコードなしで追加できます（コンソールでもこの形のコマンドを作れます）。
+
+同じコマンドをもう一度実行するとアップグレードされます。設定はそのまま残ります。
 
 <details>
 <summary><b>手動インストール</b></summary>

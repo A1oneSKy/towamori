@@ -13,18 +13,19 @@ Linux 서버의 CPU, 메모리, 디스크, 네트워크를 [Towamori](https://to
 
 ## 설치
 
-1. [Towamori 콘솔](https://app.towamori.com)에서 **서버 추가**를 누릅니다.
-2. 표시된 명령어를 복사해 서버에서 실행합니다.
+1. 서버에서 실행합니다 (systemd를 쓰는 Linux, amd64 / arm64):
 
-몇 초 뒤 호스트 이름으로 된 서버가 콘솔에 나타납니다. systemd를 쓰는 Linux(amd64 / arm64)를 지원합니다.
+   ```sh
+   curl -fsSL https://app.towamori.com/install.sh | sudo sh
+   ```
 
-명령어는 이런 모양입니다 (토큰은 이미 들어 있습니다):
+2. 페어링 코드가 표시됩니다. [Towamori 콘솔](https://app.towamori.com)에서 **서버 추가**를 누르고 코드를 입력하세요.
 
-```sh
-curl -fsSL https://app.towamori.com/install.sh | sudo TOWAMORI_TOKEN=twa_… sh
-```
+이게 전부입니다. 몇 초 뒤 호스트 이름으로 된 서버가 나타납니다.
 
-`TOWAMORI_TOKEN` 없이 같은 명령어를 실행하면 업그레이드됩니다.
+스크립트로 설치할 때는 `sudo` 뒤에 `TOWAMORI_TOKEN=<token>`을 붙이면 코드 없이 추가됩니다 (콘솔에서도 이런 명령어를 만들 수 있습니다).
+
+같은 명령어를 다시 실행하면 업그레이드되며, 설정은 그대로 유지됩니다.
 
 <details>
 <summary><b>수동 설치</b></summary>

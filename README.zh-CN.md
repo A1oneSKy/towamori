@@ -13,18 +13,19 @@
 
 ## 安装
 
-1. 在 [Towamori 控制台](https://app.towamori.com)点 **添加服务器**。
-2. 复制它给出的命令，在服务器上运行。
+1. 在服务器上运行（带 systemd 的 Linux，amd64 或 arm64）：
 
-几秒后服务器就会出现在控制台里，名字就是它的主机名。支持带 systemd 的 Linux（amd64 或 arm64）。
+   ```sh
+   curl -fsSL https://app.towamori.com/install.sh | sudo sh
+   ```
 
-命令长这样（token 已经填好了）：
+2. 它会显示一个配对码。在 [Towamori 控制台](https://app.towamori.com)点 **添加服务器**，输入这个码。
 
-```sh
-curl -fsSL https://app.towamori.com/install.sh | sudo TOWAMORI_TOKEN=twa_… sh
-```
+就这样。几秒后服务器就出现了，名字就是它的主机名。
 
-去掉 `TOWAMORI_TOKEN` 再运行一次，就是升级。
+写脚本自动装：在 `sudo` 后面加 `TOWAMORI_TOKEN=<token>` 就不用配对码（控制台也能直接生成这种命令）。
+
+再运行一次同样的命令就是升级，原来的设置会保留。
 
 <details>
 <summary><b>手动安装</b></summary>
