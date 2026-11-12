@@ -102,3 +102,33 @@ func TestRedact(t *testing.T) {
 		t.Errorf("Redact short = %q", got)
 	}
 }
+
+// Under systemd the service runs as an unprivileged user and the settings
+// file is readable by root only; systemd passes the values in the environment,
+// so the agent must start anyway. This is what made the first installs on
+// real servers restart in a loop.
+func TestUnreadableDefaultEnvFileIsIgnored(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can read any file")
+	}
+	file := writeEnv(t, "TOWAMORI_TOKEN=secret\n")
+	if err := os.Chmod(file, 0); err != nil {
+		t.Fatal(err)
+	}
+	old := DefaultEnvFile
+	DefaultEnvFile = file
+	defer func() { DefaultEnvFile = old }()
+
+	c, err := Parse(nil, env(map[string]string{"TOWAMORI_TOKEN": "from-systemd"}), io.Discard)
+	if err != nil || c.Token != "from-systemd" {
+		t.Fatalf("an unreadable default file must not stop the agent: %+v %v", c, err)
+	}
+	// A file somebody named explicitly has to be readable.
+	other := writeEnv(t, "TOWAMORI_TOKEN=secret\n")
+	if err := os.Chmod(other, 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Parse([]string{"-env-file", other}, env(map[string]string{"TOWAMORI_TOKEN": "x"}), io.Discard); err == nil {
+		t.Error("an unreadable file passed with -env-file should be an error")
+	}
+}

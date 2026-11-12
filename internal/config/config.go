@@ -21,9 +21,12 @@ import (
 
 const (
 	DefaultEndpoint = "https://ingest.towamori.com"
-	DefaultEnvFile  = "/etc/towamori/agent.env"
 	DefaultInterval = 10 * time.Second
 )
+
+// DefaultEnvFile is where the install script puts the settings. It is a
+// variable only so that tests can point it somewhere else.
+var DefaultEnvFile = "/etc/towamori/agent.env"
 
 type Config struct {
 	Endpoint string
@@ -67,7 +70,14 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 	fileVals := map[string]string{}
 	if c.EnvFile != "" {
 		vals, err := ReadEnvFile(c.EnvFile)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		switch {
+		case err == nil, errors.Is(err, os.ErrNotExist):
+		case errors.Is(err, os.ErrPermission) && c.EnvFile == DefaultEnvFile:
+			// Under systemd the unit runs as an unprivileged user while the
+			// file is readable by root only; systemd has already put its
+			// settings into the environment (EnvironmentFile=), so there is
+			// nothing to read here. A file named with -env-file must be readable.
+		default:
 			return nil, err
 		}
 		fileVals = vals

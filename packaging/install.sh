@@ -155,6 +155,7 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
 MemoryMax=64M
 
 [Install]
@@ -164,6 +165,15 @@ UNIT_EOF
 systemctl daemon-reload
 systemctl enable towamori-agent >/dev/null 2>&1
 systemctl restart towamori-agent
+
+# "systemctl restart" succeeds as soon as the process has been started, even if
+# it exits a moment later. Look again before saying it works.
+sleep 3
+if ! systemctl is-active --quiet towamori-agent; then
+  printf '%s\n' "towamori: the service did not stay up. Last log lines:" >&2
+  journalctl -u towamori-agent -n 15 --no-pager >&2 || true
+  die "installed $("$BIN" -version) but the service is not running (see above)"
+fi
 
 say "installed $("$BIN" -version); service is running"
 say "logs:      journalctl -u towamori-agent -f"
