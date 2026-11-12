@@ -29,10 +29,20 @@ const (
 	shutdownFlush = 5 * time.Second
 )
 
+// LinkSource measures the link to Towamori's probe locations; linkprobe.Prober
+// implements it. A Runner without one reports no link data and never asks the
+// platform for targets.
+type LinkSource interface {
+	Rev() string
+	SetTargets(protocol.LinkSet)
+	Take() []protocol.LinkResult
+}
+
 // Runner is the agent's main loop: collect, buffer, send.
 type Runner struct {
 	Client   *Client
 	Source   Source
+	Links    LinkSource
 	Agent    protocol.AgentInfo
 	Interval time.Duration
 	Log      *log.Logger
@@ -101,6 +111,9 @@ func (r *Runner) tick(ctx context.Context) {
 			r.Log.Printf("collect: %v", err)
 		}
 	}
+	if r.Links != nil {
+		s.Links = r.Links.Take()
+	}
 	r.push(s)
 
 	if r.now().Before(r.nextAttempt) {
@@ -146,11 +159,16 @@ func (r *Runner) flush(ctx context.Context) {
 		if n > len(r.buf) {
 			n = len(r.buf)
 		}
-		resp, err := r.Client.Report(ctx, protocol.ReportRequest{
+		req := protocol.ReportRequest{
 			Protocol: protocol.Version,
 			HostID:   r.hostID,
 			Samples:  r.buf[:n],
-		})
+		}
+		if r.Links != nil {
+			rev := r.Links.Rev()
+			req.LinkRev = &rev
+		}
+		resp, err := r.Client.Report(ctx, req)
 		if err != nil {
 			if r.fail(err, true) {
 				r.buf = append(r.buf[:0], r.buf[n:]...)
@@ -166,6 +184,9 @@ func (r *Runner) flush(ctx context.Context) {
 		r.backoff = 0
 		r.batch = r.MaxBatch
 		r.applyInterval(resp.IntervalSeconds)
+		if r.Links != nil && resp.Links != nil {
+			r.Links.SetTargets(*resp.Links)
+		}
 		if resp.HelloRequired {
 			r.needHello = true
 			return

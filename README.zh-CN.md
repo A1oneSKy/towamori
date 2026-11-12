@@ -100,6 +100,7 @@ sudo systemctl daemon-reload
 - **不需要 root。** 用临时的普通用户运行。
 - **只发数字。** 不发进程名、文件或日志。
 - **不明文传 token。** 除了 localhost，拒绝用 `http://`。
+- **只连 Towamori 自己的地址。** 除了上报，它约每分钟向 Towamori 的各个检测点（`probe.towamori.com` 下的名字）建一次普通 TCP 连接，计时后立刻关掉，不发送任何内容。用 `TOWAMORI_LINKS=off` 可以关闭。
 - **下载有校验。** 安装前核对 SHA-256。
 
 <details>
@@ -112,6 +113,7 @@ sudo systemctl daemon-reload
 | 不需要 root。 | [单元文件](packaging/systemd/towamori-agent.service)里的 `DynamicUser=yes`、`ProtectSystem=strict`。 |
 | 只发数字，不发数据。 | `towamori-agent --once` 会打印出它要发送的全部内容。 |
 | 不明文传 token。 | `towamori-agent -token x -endpoint http://example.com` 会拒绝启动。 |
+| 只连 Towamori 自己的地址。 | 拨号前先在代码里校验：只允许 `probe.towamori.com` 下的名字、1024 及以上的端口、不能是内网地址（[`CheckLinkTarget`](protocol/protocol.go)）。`sudo ss -tnp \| grep towamori` 能看到这些连接。 |
 | 下载有校验。 | 读一下 [`packaging/install.sh`](packaging/install.sh)，很短。 |
 
 </details>
@@ -198,6 +200,7 @@ flowchart LR
 | `-interval` | `TOWAMORI_INTERVAL` | `10s` | 采集间隔，5s 到 300s。你的套餐可能会设定不同的间隔。 |
 | `-env-file` | | `/etc/towamori/agent.env` | 文件不存在时忽略。 |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | 在容器里运行时，宿主机的 `/` 挂载在哪里。 |
+| `-links` | `TOWAMORI_LINKS` | `on` | 每分钟测一次到 Towamori 各检测点的连接耗时（`on` 或 `off`）。 |
 | `-once` | | | 读一次、打印、退出。不需要 token，也不联网。 |
 | `-print` | | | 同时把每个请求体打印到标准输出。 |
 | `-version` | | | 打印版本号后退出。 |

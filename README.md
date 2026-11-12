@@ -100,6 +100,7 @@ sudo systemctl daemon-reload
 - **No root.** Runs as a throwaway unprivileged user.
 - **Numbers only.** No process names, files or logs.
 - **No plain-text tokens.** Refuses `http://` except to localhost.
+- **Only Towamori's own addresses.** Besides the reports, about once a minute it opens a plain TCP connection to each Towamori probe location (names under `probe.towamori.com`), times it and closes it. Nothing is sent. Turn it off with `TOWAMORI_LINKS=off`.
 - **Verified downloads.** The installer checks SHA-256.
 
 <details>
@@ -112,6 +113,7 @@ sudo systemctl daemon-reload
 | No root needed. | `DynamicUser=yes`, `ProtectSystem=strict` in [the unit file](packaging/systemd/towamori-agent.service). |
 | Numbers, not data. | `towamori-agent --once` prints everything it would send. |
 | No plain-text tokens. | `towamori-agent -token x -endpoint http://example.com` refuses to start. |
+| Only Towamori's own addresses. | The list is checked in code before anything is dialled: names under `probe.towamori.com`, ports 1024 and up, no private addresses ([`CheckLinkTarget`](protocol/protocol.go)). `sudo ss -tnp \| grep towamori` shows the connections. |
 | Verified downloads. | Read [`packaging/install.sh`](packaging/install.sh); it is short. |
 
 </details>
@@ -198,6 +200,7 @@ Settings are read from flags, then environment variables, then `/etc/towamori/ag
 | `-interval` | `TOWAMORI_INTERVAL` | `10s` | How often to collect, 5s to 300s. Your plan may set a different interval. |
 | `-env-file` | | `/etc/towamori/agent.env` | Ignored if it does not exist. |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | Where the host's `/` is mounted when the agent runs in a container. |
+| `-links` | `TOWAMORI_LINKS` | `on` | Time the connection to Towamori's probe locations once a minute (`on` or `off`). |
 | `-once` | | | Print one reading and exit. No token or network needed. |
 | `-print` | | | Also print every request body to stdout. |
 | `-version` | | | Print the version and exit. |

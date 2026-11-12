@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -130,5 +131,27 @@ func TestUnreadableDefaultEnvFileIsIgnored(t *testing.T) {
 	}
 	if _, err := Parse([]string{"-env-file", other}, env(map[string]string{"TOWAMORI_TOKEN": "x"}), io.Discard); err == nil {
 		t.Error("an unreadable file passed with -env-file should be an error")
+	}
+}
+
+func TestLinksSetting(t *testing.T) {
+	get := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	var errs bytes.Buffer
+	c, err := Parse([]string{"-env-file", ""}, get(map[string]string{"TOWAMORI_TOKEN": "x"}), &errs)
+	if err != nil || !c.Links {
+		t.Fatalf("link measuring should be on by default: %v %v", c, err)
+	}
+	for _, off := range []string{"off", "0", "FALSE", "no"} {
+		c, err := Parse([]string{"-env-file", ""}, get(map[string]string{"TOWAMORI_TOKEN": "x", "TOWAMORI_LINKS": off}), &errs)
+		if err != nil || c.Links {
+			t.Errorf("%q should turn it off: %v %v", off, c, err)
+		}
+	}
+	c, err = Parse([]string{"-env-file", "", "-links", "on"}, get(map[string]string{"TOWAMORI_TOKEN": "x", "TOWAMORI_LINKS": "off"}), &errs)
+	if err != nil || !c.Links {
+		t.Errorf("the flag should win over the environment: %v %v", c, err)
+	}
+	if _, err := Parse([]string{"-env-file", ""}, get(map[string]string{"TOWAMORI_TOKEN": "x", "TOWAMORI_LINKS": "maybe"}), &errs); err == nil {
+		t.Error("a nonsense value should be an error")
 	}
 }

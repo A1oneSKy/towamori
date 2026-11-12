@@ -38,6 +38,8 @@ type platform struct {
 	reply     protocol.ReportResponse
 	helloCode int
 	retry     string
+	linkRevs  []*string
+	linkData  [][]protocol.LinkResult
 }
 
 func (p *platform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -78,8 +80,12 @@ func (p *platform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(code)
 			return
 		}
+		p.linkRevs = append(p.linkRevs, req.LinkRev)
 		for _, s := range req.Samples {
 			p.received = append(p.received, s.TS)
+			if len(s.Links) > 0 {
+				p.linkData = append(p.linkData, s.Links)
+			}
 		}
 		w.WriteHeader(http.StatusAccepted)
 		reply := p.reply
@@ -375,5 +381,61 @@ func TestRunStopsOnCancel(t *testing.T) {
 	}
 	if got := h.received(); len(got) < 2 {
 		t.Errorf("expected a few samples delivered, got %v", got)
+	}
+}
+
+// fakeLinks stands in for linkprobe.Prober.
+type fakeLinks struct {
+	set     protocol.LinkSet
+	results []protocol.LinkResult
+}
+
+func (f *fakeLinks) Rev() string                     { return f.set.Rev }
+func (f *fakeLinks) SetTargets(set protocol.LinkSet) { f.set = set }
+func (f *fakeLinks) Take() []protocol.LinkResult {
+	out := f.results
+	f.results = nil
+	return out
+}
+
+func TestWithoutLinksTheAgentNeverAsksForTargets(t *testing.T) {
+	h := newHarness(t)
+	h.tick(0)
+	h.tick(10 * time.Second)
+	for _, rev := range h.p.linkRevs {
+		if rev != nil {
+			t.Fatalf("link_rev was sent without link measuring: %q", *rev)
+		}
+	}
+}
+
+func TestLinkTargetsAreAskedForAndResultsRideOnSamples(t *testing.T) {
+	h := newHarness(t)
+	fl := &fakeLinks{}
+	h.r.Links = fl
+
+	set := protocol.LinkSet{Rev: "abc123", Targets: []protocol.LinkTarget{{ID: "tyo", Host: "tyo." + protocol.LinkDomain, Port: 8443}}}
+	h.p.reply = protocol.ReportResponse{Links: &set}
+	h.tick(0)
+	if len(h.p.linkRevs) != 1 || h.p.linkRevs[0] == nil || *h.p.linkRevs[0] != "" {
+		t.Fatalf("the first report should say it has no targets yet: %v", h.p.linkRevs)
+	}
+	if fl.set.Rev != "abc123" || len(fl.set.Targets) != 1 {
+		t.Fatalf("targets not handed over: %+v", fl.set)
+	}
+
+	fl.results = []protocol.LinkResult{{ID: "tyo", Sent: 5, OK: 5, Min: 40, Avg: 42.5, Max: 51}}
+	h.p.reply = protocol.ReportResponse{}
+	h.tick(10 * time.Second)
+	if got := h.p.linkRevs[len(h.p.linkRevs)-1]; got == nil || *got != "abc123" {
+		t.Errorf("the second report should carry the revision it holds: %v", got)
+	}
+	if len(h.p.linkData) != 1 || h.p.linkData[0][0].ID != "tyo" || h.p.linkData[0][0].Avg != 42.5 {
+		t.Errorf("results did not arrive: %+v", h.p.linkData)
+	}
+	// They are reported once, not on every sample.
+	h.tick(10 * time.Second)
+	if len(h.p.linkData) != 1 {
+		t.Errorf("results repeated: %+v", h.p.linkData)
 	}
 }

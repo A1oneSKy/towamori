@@ -34,6 +34,7 @@ type Config struct {
 	Interval time.Duration
 	EnvFile  string
 	HostRoot string // where the host's / is mounted; "/" unless running in a container
+	Links    bool   // measure the link to Towamori's probe locations
 
 	Once    bool // collect one sample, print it, exit; no network
 	Print   bool // also print every report body to stdout
@@ -50,6 +51,7 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 		token    = fs.String("token", "", "agent token from the dashboard (env TOWAMORI_TOKEN)")
 		interval = fs.Duration("interval", 0, "how often to collect, 5s-300s (env TOWAMORI_INTERVAL, default 10s)")
 		envFile  = fs.String("env-file", DefaultEnvFile, "file with KEY=VALUE settings; ignored if missing")
+		links    = fs.String("links", "", "measure the link to Towamori's probe locations: on or off (env TOWAMORI_LINKS, default on)")
 		hostRoot = fs.String("host-root", "", "where the host's / is mounted when running in a container (env TOWAMORI_HOST_ROOT, default /)")
 		once     = fs.Bool("once", false, "collect one sample, print the JSON that would be sent, and exit (no network)")
 		print    = fs.Bool("print", false, "also print every report body to stdout")
@@ -93,6 +95,13 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 	c.Endpoint = strings.TrimRight(c.Endpoint, "/")
 	c.Token = firstNonEmpty(*token, lookup("TOWAMORI_TOKEN"))
 	c.HostRoot = firstNonEmpty(*hostRoot, lookup("TOWAMORI_HOST_ROOT"), "/")
+	switch v := strings.ToLower(firstNonEmpty(*links, lookup("TOWAMORI_LINKS"), "on")); v {
+	case "on", "1", "true", "yes":
+		c.Links = true
+	case "off", "0", "false", "no":
+	default:
+		return nil, fmt.Errorf("TOWAMORI_LINKS: expected on or off, got %q", v)
+	}
 
 	c.Interval = DefaultInterval
 	if *interval != 0 {

@@ -2,6 +2,15 @@
 // Towamori platform. See docs/protocol.md for the human-readable contract.
 package protocol
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+)
+
 // Version is the protocol version sent with every request. It only changes
 // for breaking changes; new optional fields can be added to version 1.
 const Version = 1
@@ -56,12 +65,17 @@ type ReportRequest struct {
 	Protocol int      `json:"protocol"`
 	HostID   string   `json:"host_id,omitempty"`
 	Samples  []Sample `json:"samples"`
+	// LinkRev is the revision of the link targets this agent holds. It is
+	// only sent by agents that measure links ("" while they have none yet);
+	// the platform answers with a new list when it differs.
+	LinkRev *string `json:"link_rev,omitempty"`
 }
 
 type ReportResponse struct {
-	Accepted        int  `json:"accepted"`
-	IntervalSeconds int  `json:"interval_seconds,omitempty"`
-	HelloRequired   bool `json:"hello_required,omitempty"`
+	Accepted        int      `json:"accepted"`
+	IntervalSeconds int      `json:"interval_seconds,omitempty"`
+	HelloRequired   bool     `json:"hello_required,omitempty"`
+	Links           *LinkSet `json:"links,omitempty"`
 }
 
 // Sample is one point-in-time reading. Pointer fields are omitted when the
@@ -77,6 +91,9 @@ type Sample struct {
 	Disks  []Disk   `json:"disks,omitempty"`
 	DiskIO *DiskIO  `json:"disk_io,omitempty"`
 	Net    *Network `json:"net,omitempty"`
+	// Links is present on the sample that follows a finished round of link
+	// measurements (about once a minute), not on every sample.
+	Links []LinkResult `json:"links,omitempty"`
 }
 
 // CPU percentages are shares (0-100) of total CPU time across all cores
@@ -149,3 +166,104 @@ func ClampInterval(seconds int) int {
 	}
 	return seconds
 }
+
+// ---- links: how well this machine reaches Towamori's probe locations ----
+
+const (
+	// LinkDomain is the only domain the agent will measure. Targets must be
+	// a subdomain of it, so a platform can never point the agent at a
+	// third party's address.
+	LinkDomain = "probe.towamori.com"
+
+	// MaxLinkTargets bounds the list the platform may send.
+	MaxLinkTargets = 16
+	// MinLinkPort keeps targets out of the well-known service ports.
+	MinLinkPort = 1024
+)
+
+// LinkTarget is one probe location the agent connects to: a plain TCP
+// connection that is closed again at once, timed. Nothing is sent or read.
+type LinkTarget struct {
+	ID   string `json:"id"`
+	Host string `json:"host"`
+	Port int    `json:"port"`
+}
+
+// LinkSet is the platform's list of targets with a revision that changes
+// whenever the list does.
+type LinkSet struct {
+	Rev     string       `json:"rev"`
+	Targets []LinkTarget `json:"targets"`
+}
+
+// LinkResult is one round of measurements against one target. Times are
+// milliseconds of connection setup (about one round trip); Min, Avg and Max
+// cover the successful attempts only. Err names why every attempt failed and
+// is empty when at least one succeeded.
+type LinkResult struct {
+	ID   string  `json:"id"`
+	Sent int     `json:"sent"`
+	OK   int     `json:"ok"`
+	Min  float64 `json:"min,omitempty"`
+	Avg  float64 `json:"avg,omitempty"`
+	Max  float64 `json:"max,omitempty"`
+	Err  string  `json:"err,omitempty"`
+}
+
+// Link failure classes.
+const (
+	LinkErrTimeout     = "timeout"
+	LinkErrRefused     = "refused"
+	LinkErrUnreachable = "unreachable"
+	LinkErrDNS         = "dns"
+	LinkErrBlocked     = "blocked"
+	LinkErrOther       = "error"
+)
+
+// ValidID reports whether id is a short plain identifier (letters, digits,
+// dash), which is all a probe location needs.
+func ValidID(id string) bool {
+	if id == "" || len(id) > 16 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// CheckLinkTarget refuses anything that is not a probe location of ours.
+func CheckLinkTarget(t LinkTarget) error {
+	if !ValidID(t.ID) {
+		return fmt.Errorf("bad id %q", t.ID)
+	}
+	host := strings.ToLower(t.Host)
+	if host != t.Host || !strings.HasSuffix(host, "."+LinkDomain) || len(host) > 253 {
+		return fmt.Errorf("host %q is not under %s", t.Host, LinkDomain)
+	}
+	for _, r := range strings.TrimSuffix(host, "."+LinkDomain) {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '.') {
+			return fmt.Errorf("host %q has odd characters", t.Host)
+		}
+	}
+	if t.Port < MinLinkPort || t.Port > 65535 {
+		return fmt.Errorf("port %d is outside %d-65535", t.Port, MinLinkPort)
+	}
+	return nil
+}
+
+// LinkRev is the revision of a list: a short hash of its sorted entries.
+func LinkRev(targets []LinkTarget) string {
+	lines := make([]string, len(targets))
+	for i, t := range targets {
+		lines[i] = fmt.Sprintf("%s|%s|%d", t.ID, t.Host, t.Port)
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return hex.EncodeToString(sum[:6])
+}
+
+// ErrTooManyTargets is returned when a list is longer than MaxLinkTargets.
+var ErrTooManyTargets = errors.New("too many link targets")

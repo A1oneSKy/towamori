@@ -100,6 +100,7 @@ sudo systemctl daemon-reload
 - **root 불필요.** 일회용 일반 사용자로 실행됩니다.
 - **숫자만 전송.** 프로세스 이름, 파일, 로그는 보내지 않습니다.
 - **토큰을 평문으로 보내지 않음.** localhost 외의 `http://`는 거부합니다.
+- **Towamori 자체 주소에만 연결.** 보고와 별개로 약 1분마다 Towamori의 각 지점(`probe.towamori.com` 아래 이름)에 일반 TCP 연결을 맺어 시간을 재고 바로 닫습니다. 아무것도 보내지 않습니다. `TOWAMORI_LINKS=off`로 끌 수 있습니다.
 - **다운로드 검증.** 설치 전에 SHA-256을 확인합니다.
 
 <details>
@@ -112,6 +113,7 @@ sudo systemctl daemon-reload
 | root 불필요. | [유닛 파일](packaging/systemd/towamori-agent.service)의 `DynamicUser=yes`, `ProtectSystem=strict`. |
 | 숫자만 보냅니다. | `towamori-agent --once`로 보낼 내용을 전부 출력해 볼 수 있습니다. |
 | 토큰을 평문으로 보내지 않음. | `towamori-agent -token x -endpoint http://example.com`은 시작을 거부합니다. |
+| Towamori 자체 주소에만 연결. | 연결 전에 코드에서 검증합니다: `probe.towamori.com` 아래 이름, 1024 이상의 포트, 사설 주소 불가([`CheckLinkTarget`](protocol/protocol.go)). `sudo ss -tnp \| grep towamori`로 연결을 볼 수 있습니다. |
 | 다운로드 검증. | [`packaging/install.sh`](packaging/install.sh)를 읽어 보세요. 짧습니다. |
 
 </details>
@@ -198,6 +200,7 @@ flowchart LR
 | `-interval` | `TOWAMORI_INTERVAL` | `10s` | 수집 간격, 5s~300s. 요금제에 따라 다른 간격이 지정될 수 있습니다. |
 | `-env-file` | | `/etc/towamori/agent.env` | 파일이 없으면 무시합니다. |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | 컨테이너에서 실행할 때 호스트의 `/`가 마운트된 위치. |
+| `-links` | `TOWAMORI_LINKS` | `on` | 약 1분마다 Towamori 각 지점까지의 연결 시간을 잰다(`on` 또는 `off`). |
 | `-once` | | | 한 번 측정해 출력하고 종료합니다. 토큰도 네트워크도 필요 없습니다. |
 | `-print` | | | 보내는 요청 본문을 표준 출력에도 출력합니다. |
 | `-version` | | | 버전을 출력하고 종료합니다. |

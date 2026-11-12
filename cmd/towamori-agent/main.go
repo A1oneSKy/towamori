@@ -1,6 +1,7 @@
 // Command towamori-agent reports host metrics to Towamori.
 //
-// It only makes outbound HTTPS requests, never listens on a port and never
+// It only makes outbound connections (HTTPS to the platform, and a timed TCP
+// connect to each Towamori probe location), never listens on a port and never
 // accepts commands. Run `towamori-agent --once` to see exactly what it sends.
 package main
 
@@ -19,6 +20,7 @@ import (
 
 	"github.com/towamori/agent/internal/collect"
 	"github.com/towamori/agent/internal/config"
+	"github.com/towamori/agent/internal/linkprobe"
 	"github.com/towamori/agent/internal/report"
 	"github.com/towamori/agent/internal/version"
 	"github.com/towamori/agent/protocol"
@@ -50,8 +52,8 @@ func main() {
 	}
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
-	logger.Printf("towamori-agent %s starting: endpoint=%s token=%s interval=%s host-root=%s",
-		version.Version, cfg.Endpoint, config.Redact(cfg.Token), cfg.Interval, cfg.HostRoot)
+	logger.Printf("towamori-agent %s starting: endpoint=%s token=%s interval=%s host-root=%s links=%t",
+		version.Version, cfg.Endpoint, config.Redact(cfg.Token), cfg.Interval, cfg.HostRoot, cfg.Links)
 
 	client := report.NewClient(cfg.Endpoint, cfg.Token, agent)
 	if cfg.Print {
@@ -67,6 +69,11 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cfg.Links {
+		p := &linkprobe.Prober{Log: logger}
+		r.Links = p
+		go p.Run(ctx)
+	}
 	_ = r.Run(ctx)
 	logger.Printf("stopped")
 }

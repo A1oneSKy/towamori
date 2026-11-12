@@ -140,6 +140,57 @@ Success response (`202`):
 { "accepted": 1 }
 ```
 
+A report may also carry `link_rev`, and the response `links`; see [Link measurements](#link-measurements).
+
+## Link measurements
+
+Besides its own metrics the agent times how well the machine reaches Towamori's probe locations.
+This is optional on both sides: an agent that sends no `link_rev` is never told about locations, and
+`TOWAMORI_LINKS=off` turns it off.
+
+**Asking.** A report may carry `"link_rev"`, the revision of the location list the agent holds (an
+empty string before it has one). If the platform's list has a different revision, the response
+contains it:
+
+```json
+{
+  "accepted": 1,
+  "links": {
+    "rev": "9f2c41d7a0b3",
+    "targets": [
+      { "id": "tyo", "host": "tyo.probe.towamori.com", "port": 8443 },
+      { "id": "fra", "host": "fra.probe.towamori.com", "port": 8443 }
+    ]
+  }
+}
+```
+
+**Measuring.** About once a minute the agent opens a TCP connection to each target, five times with
+a quarter of a second between them, and closes it again at once. It times how long the connection
+takes to be established (about one round trip). Nothing is written to or read from the connection.
+All targets are measured at the same time, each attempt gives up after 3 seconds.
+
+**Limits the agent enforces itself** (the platform cannot change them):
+
+- the host must end in `.probe.towamori.com` (lower case, letters, digits and dashes only);
+- the port must be 1024 or higher;
+- the name must resolve to a public address: loopback, private, link-local and carrier-grade NAT
+  (`100.64.0.0/10`) addresses are refused; IPv4 is preferred;
+- at most 16 targets; entries that break a rule are ignored and logged once.
+
+**Reporting.** The sample that follows a finished round carries `links`; other samples do not:
+
+```json
+"links": [
+  { "id": "tyo", "sent": 5, "ok": 5, "min": 41.2, "avg": 42.7, "max": 45.1 },
+  { "id": "fra", "sent": 5, "ok": 0, "err": "timeout" }
+]
+```
+
+- `min`, `avg`, `max` — milliseconds, over the successful attempts only; omitted when `ok` is 0.
+- `err` — only when every attempt failed: `timeout`, `refused`, `unreachable`, `dns`, `blocked`
+  (the name resolved to an address the agent will not use) or `error`.
+
 ## Responses and agent behaviour
 
 | Status | Meaning | Agent does |
