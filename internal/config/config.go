@@ -35,6 +35,7 @@ type Config struct {
 	EnvFile  string
 	HostRoot string // where the host's / is mounted; "/" unless running in a container
 	Links    bool   // measure the link to Towamori's probe locations
+	Update   bool   // replace itself with a newer signed build when the console asks
 
 	Once    bool // collect one sample, print it, exit; no network
 	Print   bool // also print every report body to stdout
@@ -52,6 +53,7 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 		interval = fs.Duration("interval", 0, "how often to collect, 5s-300s (env TOWAMORI_INTERVAL, default 10s)")
 		envFile  = fs.String("env-file", DefaultEnvFile, "file with KEY=VALUE settings; ignored if missing")
 		links    = fs.String("links", "", "measure the link to Towamori's probe locations: on or off (env TOWAMORI_LINKS, default on)")
+		update   = fs.String("update", "", "let the console update this agent (signed builds only): on or off (env TOWAMORI_UPDATE, default on)")
 		hostRoot = fs.String("host-root", "", "where the host's / is mounted when running in a container (env TOWAMORI_HOST_ROOT, default /)")
 		once     = fs.Bool("once", false, "collect one sample, print the JSON that would be sent, and exit (no network)")
 		print    = fs.Bool("print", false, "also print every report body to stdout")
@@ -101,6 +103,14 @@ func Parse(args []string, getenv func(string) string, stderr io.Writer) (*Config
 	case "off", "0", "false", "no":
 	default:
 		return nil, fmt.Errorf("TOWAMORI_LINKS: expected on or off, got %q", v)
+	}
+
+	switch v := strings.ToLower(firstNonEmpty(*update, lookup("TOWAMORI_UPDATE"), "on")); v {
+	case "on", "1", "true", "yes":
+		c.Update = true
+	case "off", "0", "false", "no":
+	default:
+		return nil, fmt.Errorf("TOWAMORI_UPDATE: expected on or off, got %q", v)
 	}
 
 	c.Interval = DefaultInterval

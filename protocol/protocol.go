@@ -33,6 +33,11 @@ type AgentInfo struct {
 	Version string `json:"version"`
 	OS      string `json:"os"`
 	Arch    string `json:"arch"`
+	// SelfUpdate is true when this agent can replace itself with a newer,
+	// signed build when the platform offers one (see UpdateOffer). It is
+	// false when updates are switched off or the install has nowhere to keep
+	// a new build.
+	SelfUpdate bool `json:"self_update,omitempty"`
 }
 
 // HostInfo describes the machine. It is sent once per hello.
@@ -69,13 +74,32 @@ type ReportRequest struct {
 	// only sent by agents that measure links ("" while they have none yet);
 	// the platform answers with a new list when it differs.
 	LinkRev *string `json:"link_rev,omitempty"`
+	// Update says that the update the platform offered did not work, once.
+	Update *UpdateStatus `json:"update,omitempty"`
+}
+
+// UpdateStatus is sent after an update failed: which version, and why.
+type UpdateStatus struct {
+	Version string `json:"version"`
+	Error   string `json:"error"`
+}
+
+// UpdateOffer is the platform asking an agent to move to Version. It is only
+// sent when the owner pressed "Update" for this server and only to agents that
+// said SelfUpdate. The agent downloads from URL (a folder holding the archives
+// and their signatures), verifies the signature against the release key that
+// is built into it, and ignores the offer if anything is off.
+type UpdateOffer struct {
+	Version string `json:"version"`
+	URL     string `json:"url"`
 }
 
 type ReportResponse struct {
-	Accepted        int      `json:"accepted"`
-	IntervalSeconds int      `json:"interval_seconds,omitempty"`
-	HelloRequired   bool     `json:"hello_required,omitempty"`
-	Links           *LinkSet `json:"links,omitempty"`
+	Accepted        int          `json:"accepted"`
+	IntervalSeconds int          `json:"interval_seconds,omitempty"`
+	HelloRequired   bool         `json:"hello_required,omitempty"`
+	Links           *LinkSet     `json:"links,omitempty"`
+	Update          *UpdateOffer `json:"update,omitempty"`
 }
 
 // Sample is one point-in-time reading. Pointer fields are omitted when the

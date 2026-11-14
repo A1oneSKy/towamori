@@ -40,6 +40,7 @@ type platform struct {
 	retry     string
 	linkRevs  []*string
 	linkData  [][]protocol.LinkResult
+	updates   []*protocol.UpdateStatus // the Update field of each accepted report
 }
 
 func (p *platform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +82,7 @@ func (p *platform) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		p.linkRevs = append(p.linkRevs, req.LinkRev)
+		p.updates = append(p.updates, req.Update)
 		for _, s := range req.Samples {
 			p.received = append(p.received, s.TS)
 			if len(s.Links) > 0 {

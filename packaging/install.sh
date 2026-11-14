@@ -10,6 +10,7 @@
 # Optional: TOWAMORI_VERSION=0.1.0 to pin a release, TOWAMORI_ENDPOINT to override the endpoint,
 # TOWAMORI_DOWNLOAD_BASE=https://… to download from somewhere other than GitHub releases.
 # Running it again upgrades the binary and keeps your existing /etc/towamori/agent.env.
+# After that the console can update the agent for you (the "Update" button on the server's page).
 set -eu
 
 REPO="A1oneSKy/towamori"
@@ -103,6 +104,8 @@ say "verifying checksum"
 
 tar -xzf "$TMP/$ARCHIVE" -C "$TMP" towamori-agent
 install -m 0755 "$TMP/towamori-agent" "$BIN"
+# A build fetched by an earlier "Update" in the console is older than this one now; drop it.
+rm -rf /var/lib/private/towamori/bin /var/lib/private/towamori/update.json 2>/dev/null || true
 
 if [ -z "${TOWAMORI_TOKEN:-}" ] && [ ! -f "$CONF" ]; then
   pair
@@ -134,6 +137,9 @@ EnvironmentFile=-/etc/towamori/agent.env
 Restart=always
 RestartSec=5
 DynamicUser=yes
+# A place the throwaway user may write: updated builds the console asked for (see internal/update).
+StateDirectory=towamori
+StateDirectoryMode=0700
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 AmbientCapabilities=

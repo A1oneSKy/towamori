@@ -101,6 +101,7 @@ sudo systemctl daemon-reload
 - **送るのは数値だけ。** プロセス名・ファイル・ログは送りません。
 - **トークンを平文で送らない。** localhost 以外への `http://` は拒否します。
 - **Towamori 自身のアドレスにだけ接続。** 送信とは別に、約 1 分ごとに Towamori の各拠点（`probe.towamori.com` 配下の名前）へ通常の TCP 接続を張って時間を測り、すぐ閉じます。何も送りません。`TOWAMORI_LINKS=off` で無効にできます。
+- **更新は、あなたが押したときだけ。署名された版だけ。** 勝手には更新しません。コンソールでそのサーバーの「更新」を押すと、Agent が Towamori から新しい版をダウンロードし、組み込みの公開鍵で Ed25519 署名を確認してから自分を入れ替えます。`TOWAMORI_UPDATE=off` で無効にできます。
 - **ダウンロードを検証。** インストール前に SHA-256 を確認します。
 
 <details>
@@ -114,6 +115,7 @@ sudo systemctl daemon-reload
 | 送るのは数値だけ。 | `towamori-agent --once` で送信内容をすべて表示できます。 |
 | トークンを平文で送らない。 | `towamori-agent -token x -endpoint http://example.com` は起動を拒否します。 |
 | Towamori 自身のアドレスにだけ接続。 | 接続前にコード内で検証します：`probe.towamori.com` 配下の名前、1024 以上のポート、プライベートアドレスは不可（[`CheckLinkTarget`](protocol/protocol.go)）。`sudo ss -tnp \| grep towamori` で接続を確認できます。 |
+| 更新は、あなたが押したときだけ。署名された版だけ。 | 仕組みのすべては [`internal/update`](internal/update)、公開鍵は [`statement.go`](internal/update/statement.go) にあります。`journalctl -u towamori-agent` に更新が毎回記録されます。 |
 | ダウンロードを検証。 | [`packaging/install.sh`](packaging/install.sh) を読んでみてください。短いです。 |
 
 </details>
@@ -184,7 +186,7 @@ flowchart LR
 
 - **エンドポイントは 2 つ。** 起動時に一度だけ `hello` でマシンの基本情報を送り、その後は読み取るたびに `report` を送ります。
 - **障害時もデータを失わない。** Towamori に届かない間は最大 360 件の読み取り（標準の間隔で 1 時間分）をメモリに保持し、復旧後に古い順に送ります。再試行は指数バックオフです。
-- **あえて小さく、地味に。** Go 標準ライブラリのみ、静的バイナリ 1 つ、プラグインなし、自動更新なし。
+- **あえて小さく、地味に。** Go 標準ライブラリのみ、静的バイナリ 1 つ、プラグインなし、自動更新なし（コンソールで「更新」を押したときだけ、Towamori が署名した版へ更新します）。
 
 </details>
 
@@ -201,6 +203,7 @@ flowchart LR
 | `-env-file` | | `/etc/towamori/agent.env` | ファイルがなければ無視します。 |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | コンテナで動かすときの、ホストの `/` のマウント先。 |
 | `-links` | `TOWAMORI_LINKS` | `on` | 約 1 分ごとに Towamori の各拠点への接続時間を測ります（`on` / `off`）。 |
+| `-update` | `TOWAMORI_UPDATE` | `on` | コンソールからこの Agent を新しい署名済みの版へ更新できるようにします（`on` / `off`）。systemd でのインストールが必要です（Docker 版は不可）。 |
 | `-once` | | | 1 回だけ読み取って表示し、終了します。トークンもネットワークも不要です。 |
 | `-print` | | | 送信するリクエスト本文を標準出力にも表示します。 |
 | `-version` | | | バージョンを表示して終了します。 |

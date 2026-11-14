@@ -1,4 +1,7 @@
 VERSION ?= 0.1.0-dev
+# SIGN_KEY=<private key from towamori-sign keygen> also writes a .sig next to every archive,
+# which is what lets running agents accept the build when the console offers it.
+SIGN_KEY ?=
 LDFLAGS := -s -w -X github.com/towamori/agent/internal/version.Version=$(VERSION)
 ARCHES  := amd64 arm64
 
@@ -24,6 +27,9 @@ dist: clean
 		rm -r $$dir; \
 	done
 	cd dist && shasum -a 256 *.tar.gz > checksums.txt
+	if [ -n "$(SIGN_KEY)" ]; then set -e; for arch in $(ARCHES); do \
+		go run ./cmd/towamori-sign sign -key "$(SIGN_KEY)" -version "$(VERSION)" -os linux -arch $$arch dist/towamori-agent_linux_$$arch.tar.gz; \
+	done; fi
 
 clean:
 	rm -rf bin dist

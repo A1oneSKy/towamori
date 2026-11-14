@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/towamori/agent/protocol"
@@ -38,14 +39,26 @@ type LinkSource interface {
 	Take() []protocol.LinkResult
 }
 
+// Updater replaces the agent with a newer signed build; update.Updater
+// implements it. Apply only returns when the update did not happen.
+type Updater interface {
+	Apply(ctx context.Context, version, base string) error
+	// Confirm is called after the first report the platform accepted.
+	Confirm()
+}
+
 // Runner is the agent's main loop: collect, buffer, send.
 type Runner struct {
-	Client   *Client
-	Source   Source
-	Links    LinkSource
-	Agent    protocol.AgentInfo
-	Interval time.Duration
-	Log      *log.Logger
+	Client  *Client
+	Source  Source
+	Links   LinkSource
+	Updater Updater
+	// UpdateFailure is an update that failed before this process started
+	// (the agent went back to the old build); it is reported once.
+	UpdateFailure *protocol.UpdateStatus
+	Agent         protocol.AgentInfo
+	Interval      time.Duration
+	Log           *log.Logger
 
 	MaxBuffer int
 	MaxBatch  int
@@ -59,6 +72,12 @@ type Runner struct {
 	batch       int
 	failing     bool
 	seenErrs    map[string]bool
+
+	updMu    sync.Mutex
+	updating bool
+	updFail  *protocol.UpdateStatus
+	sentFail *protocol.UpdateStatus // taken for the request in flight
+	confirm  bool
 }
 
 func (r *Runner) init() {
@@ -168,8 +187,10 @@ func (r *Runner) flush(ctx context.Context) {
 			rev := r.Links.Rev()
 			req.LinkRev = &rev
 		}
+		req.Update = r.takeUpdateFailure()
 		resp, err := r.Client.Report(ctx, req)
 		if err != nil {
+			r.restoreUpdateFailure()
 			if r.fail(err, true) {
 				r.buf = append(r.buf[:0], r.buf[n:]...)
 				continue
@@ -187,11 +208,69 @@ func (r *Runner) flush(ctx context.Context) {
 		if r.Links != nil && resp.Links != nil {
 			r.Links.SetTargets(*resp.Links)
 		}
+		r.afterAccepted(ctx, resp)
 		if resp.HelloRequired {
 			r.needHello = true
 			return
 		}
 	}
+}
+
+// takeUpdateFailure hands over the failed update to report, once. If the
+// request that carries it fails it is put back by restoreUpdateFailure.
+func (r *Runner) takeUpdateFailure() *protocol.UpdateStatus {
+	r.updMu.Lock()
+	defer r.updMu.Unlock()
+	f := r.updFail
+	if f == nil {
+		f = r.UpdateFailure
+		r.UpdateFailure = nil
+	}
+	r.updFail = nil
+	r.sentFail = f
+	return f
+}
+
+func (r *Runner) restoreUpdateFailure() {
+	r.updMu.Lock()
+	defer r.updMu.Unlock()
+	if r.sentFail != nil {
+		r.updFail = r.sentFail
+		r.sentFail = nil
+	}
+}
+
+// afterAccepted does what follows a report the platform accepted: tell the
+// updater the running build works, and act on an offer to update.
+func (r *Runner) afterAccepted(ctx context.Context, resp protocol.ReportResponse) {
+	r.updMu.Lock()
+	defer r.updMu.Unlock()
+	r.sentFail = nil
+	if r.Updater == nil {
+		return
+	}
+	if !r.confirm {
+		r.confirm = true
+		r.Updater.Confirm()
+	}
+	if resp.Update == nil || r.updating || !r.Agent.SelfUpdate {
+		return
+	}
+	offer := *resp.Update
+	r.updating = true
+	r.Log.Printf("update: the console offered %s", offer.Version)
+	go func() {
+		err := r.Updater.Apply(ctx, offer.Version, offer.URL)
+		// Apply only comes back when the update did not happen (a successful
+		// one replaces this process).
+		r.updMu.Lock()
+		defer r.updMu.Unlock()
+		r.updating = false
+		if err != nil {
+			r.Log.Printf("update to %s failed: %v", offer.Version, err)
+			r.updFail = &protocol.UpdateStatus{Version: offer.Version, Error: err.Error()}
+		}
+	}()
 }
 
 // fail decides when to try again. For a report it returns true when the

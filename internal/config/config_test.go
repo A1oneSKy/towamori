@@ -155,3 +155,21 @@ func TestLinksSetting(t *testing.T) {
 		t.Error("a nonsense value should be an error")
 	}
 }
+
+func TestUpdateSwitch(t *testing.T) {
+	base := map[string]string{"TOWAMORI_TOKEN": "t"}
+	c, err := Parse([]string{"-env-file", ""}, env(base), io.Discard)
+	if err != nil || !c.Update {
+		t.Fatalf("updates should be on by default: %+v %v", c, err)
+	}
+	off := map[string]string{"TOWAMORI_TOKEN": "t", "TOWAMORI_UPDATE": "off"}
+	if c, err = Parse([]string{"-env-file", ""}, env(off), io.Discard); err != nil || c.Update {
+		t.Fatalf("TOWAMORI_UPDATE=off: %+v %v", c, err)
+	}
+	if c, err = Parse([]string{"-env-file", "", "-update", "on"}, env(off), io.Discard); err != nil || !c.Update {
+		t.Fatalf("-update on should beat the environment: %+v %v", c, err)
+	}
+	if _, err = Parse([]string{"-env-file", "", "-update", "maybe"}, env(base), io.Discard); err == nil {
+		t.Fatal("a bad value was accepted")
+	}
+}

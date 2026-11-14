@@ -2,7 +2,10 @@
 //
 // It only makes outbound connections (HTTPS to the platform, and a timed TCP
 // connect to each Towamori probe location), never listens on a port and never
-// accepts commands. Run `towamori-agent --once` to see exactly what it sends.
+// accepts commands. The one thing it can be asked to do is to replace itself
+// with a newer build that Towamori signed, and only after you pressed
+// "Update" in the console (TOWAMORI_UPDATE=off turns that off). Run
+// `towamori-agent --once` to see exactly what it sends.
 package main
 
 import (
@@ -22,6 +25,7 @@ import (
 	"github.com/towamori/agent/internal/config"
 	"github.com/towamori/agent/internal/linkprobe"
 	"github.com/towamori/agent/internal/report"
+	"github.com/towamori/agent/internal/update"
 	"github.com/towamori/agent/internal/version"
 	"github.com/towamori/agent/protocol"
 )
@@ -52,8 +56,17 @@ func main() {
 	}
 
 	logger := log.New(os.Stderr, "", log.LstdFlags)
-	logger.Printf("towamori-agent %s starting: endpoint=%s token=%s interval=%s host-root=%s links=%t",
-		version.Version, cfg.Endpoint, config.Redact(cfg.Token), cfg.Interval, cfg.HostRoot, cfg.Links)
+
+	// An update that was installed earlier lives next to the program systemd
+	// starts; if there is one, run that instead (it re-checks its signature).
+	upd := update.New(update.StateDirFromEnv(os.Getenv), version.Version, logger)
+	if cfg.Update {
+		upd.Relaunch()
+	}
+	agent.SelfUpdate = cfg.Update && upd.Supported()
+
+	logger.Printf("towamori-agent %s starting: endpoint=%s token=%s interval=%s host-root=%s links=%t update=%t",
+		version.Version, cfg.Endpoint, config.Redact(cfg.Token), cfg.Interval, cfg.HostRoot, cfg.Links, agent.SelfUpdate)
 
 	client := report.NewClient(cfg.Endpoint, cfg.Token, agent)
 	if cfg.Print {
@@ -65,6 +78,13 @@ func main() {
 		Agent:    agent,
 		Interval: cfg.Interval,
 		Log:      logger,
+	}
+
+	if agent.SelfUpdate {
+		r.Updater = upd
+		if v, msg := upd.Failure(); v != "" {
+			r.UpdateFailure = &protocol.UpdateStatus{Version: v, Error: msg}
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

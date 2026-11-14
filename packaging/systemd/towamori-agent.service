@@ -13,6 +13,9 @@ RestartSec=5
 
 # Run as a throwaway unprivileged user with a read-only view of the system.
 DynamicUser=yes
+# A place the throwaway user may write: updated builds the console asked for (see internal/update).
+StateDirectory=towamori
+StateDirectoryMode=0700
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 AmbientCapabilities=

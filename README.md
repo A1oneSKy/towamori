@@ -101,6 +101,7 @@ sudo systemctl daemon-reload
 - **Numbers only.** No process names, files or logs.
 - **No plain-text tokens.** Refuses `http://` except to localhost.
 - **Only Towamori's own addresses.** Besides the reports, about once a minute it opens a plain TCP connection to each Towamori probe location (names under `probe.towamori.com`), times it and closes it. Nothing is sent. Turn it off with `TOWAMORI_LINKS=off`.
+- **Updates only when you ask, and only signed builds.** Nothing is updated on its own. After you press "Update" for a server in the console, the agent downloads the new build from Towamori, checks its Ed25519 signature against the key built into it, and only then replaces itself. Turn it off with `TOWAMORI_UPDATE=off`.
 - **Verified downloads.** The installer checks SHA-256.
 
 <details>
@@ -114,6 +115,7 @@ sudo systemctl daemon-reload
 | Numbers, not data. | `towamori-agent --once` prints everything it would send. |
 | No plain-text tokens. | `towamori-agent -token x -endpoint http://example.com` refuses to start. |
 | Only Towamori's own addresses. | The list is checked in code before anything is dialled: names under `probe.towamori.com`, ports 1024 and up, no private addresses ([`CheckLinkTarget`](protocol/protocol.go)). `sudo ss -tnp \| grep towamori` shows the connections. |
+| Updates only when you ask, and only signed builds. | [`internal/update`](internal/update) is the whole mechanism; the public key is in [`statement.go`](internal/update/statement.go). `journalctl -u towamori-agent` logs every update. |
 | Verified downloads. | Read [`packaging/install.sh`](packaging/install.sh); it is short. |
 
 </details>
@@ -184,7 +186,7 @@ flowchart LR
 
 - **Two endpoints.** `hello` once at start-up with a few facts about the machine, then `report` after every reading.
 - **Survives outages.** When Towamori cannot be reached it keeps up to 360 readings in memory (an hour at the default interval) and sends them later, oldest first, retrying with exponential backoff.
-- **Small and boring on purpose.** Go standard library only, a single static binary, no plugins, no auto-update.
+- **Small and boring on purpose.** Go standard library only, a single static binary, no plugins, no automatic updates (it only updates after you press "Update" in the console, and only to builds Towamori signed).
 
 </details>
 
@@ -201,6 +203,7 @@ Settings are read from flags, then environment variables, then `/etc/towamori/ag
 | `-env-file` | | `/etc/towamori/agent.env` | Ignored if it does not exist. |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | Where the host's `/` is mounted when the agent runs in a container. |
 | `-links` | `TOWAMORI_LINKS` | `on` | Time the connection to Towamori's probe locations once a minute (`on` or `off`). |
+| `-update` | `TOWAMORI_UPDATE` | `on` | Allow the console to update this agent to a newer signed build (`on` or `off`). Needs the systemd install (not the Docker one). |
 | `-once` | | | Print one reading and exit. No token or network needed. |
 | `-print` | | | Also print every request body to stdout. |
 | `-version` | | | Print the version and exit. |

@@ -101,6 +101,7 @@ sudo systemctl daemon-reload
 - **只发数字。** 不发进程名、文件或日志。
 - **不明文传 token。** 除了 localhost，拒绝用 `http://`。
 - **只连 Towamori 自己的地址。** 除了上报，它约每分钟向 Towamori 的各个检测点（`probe.towamori.com` 下的名字）建一次普通 TCP 连接，计时后立刻关掉，不发送任何内容。用 `TOWAMORI_LINKS=off` 可以关闭。
+- **只在你点「更新」时才更新，而且只认签名的版本。** 它不会自己更新。你在控制台里点了某台服务器的「更新」后，Agent 才从 Towamori 下载新版本，用内置的公钥验过 Ed25519 签名，再替换自己。`TOWAMORI_UPDATE=off` 可以关掉。
 - **下载有校验。** 安装前核对 SHA-256。
 
 <details>
@@ -114,6 +115,7 @@ sudo systemctl daemon-reload
 | 只发数字，不发数据。 | `towamori-agent --once` 会打印出它要发送的全部内容。 |
 | 不明文传 token。 | `towamori-agent -token x -endpoint http://example.com` 会拒绝启动。 |
 | 只连 Towamori 自己的地址。 | 拨号前先在代码里校验：只允许 `probe.towamori.com` 下的名字、1024 及以上的端口、不能是内网地址（[`CheckLinkTarget`](protocol/protocol.go)）。`sudo ss -tnp \| grep towamori` 能看到这些连接。 |
+| 只在你点「更新」时才更新，只认签名的版本。 | 整个机制就是 [`internal/update`](internal/update)，公钥在 [`statement.go`](internal/update/statement.go)。`journalctl -u towamori-agent` 会记下每一次更新。 |
 | 下载有校验。 | 读一下 [`packaging/install.sh`](packaging/install.sh)，很短。 |
 
 </details>
@@ -184,7 +186,7 @@ flowchart LR
 
 - **只有两个接口。** 启动时调用一次 `hello`，报告机器的基本信息；之后每读一次就调用一次 `report`。
 - **断网不丢数据。** 连不上 Towamori 时，最多在内存里保留 360 次读数（默认间隔下是一小时），恢复后按时间顺序补发，重试间隔按指数退避。
-- **刻意做得小而无聊。** 只用 Go 标准库，一个静态二进制文件，没有插件，不会自动更新。
+- **刻意做得小而无聊。** 只用 Go 标准库，一个静态二进制文件，没有插件，不会自动更新（只有你在控制台点了「更新」才会更新，而且只更新到 Towamori 签过名的版本）。
 
 </details>
 
@@ -201,6 +203,7 @@ flowchart LR
 | `-env-file` | | `/etc/towamori/agent.env` | 文件不存在时忽略。 |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | 在容器里运行时，宿主机的 `/` 挂载在哪里。 |
 | `-links` | `TOWAMORI_LINKS` | `on` | 每分钟测一次到 Towamori 各检测点的连接耗时（`on` 或 `off`）。 |
+| `-update` | `TOWAMORI_UPDATE` | `on` | 允许控制台把这个 Agent 更新到更新的签名版本（`on` 或 `off`）。需要 systemd 方式安装（Docker 方式不行）。 |
 | `-once` | | | 读一次、打印、退出。不需要 token，也不联网。 |
 | `-print` | | | 同时把每个请求体打印到标准输出。 |
 | `-version` | | | 打印版本号后退出。 |

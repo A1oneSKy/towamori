@@ -101,6 +101,7 @@ sudo systemctl daemon-reload
 - **숫자만 전송.** 프로세스 이름, 파일, 로그는 보내지 않습니다.
 - **토큰을 평문으로 보내지 않음.** localhost 외의 `http://`는 거부합니다.
 - **Towamori 자체 주소에만 연결.** 보고와 별개로 약 1분마다 Towamori의 각 지점(`probe.towamori.com` 아래 이름)에 일반 TCP 연결을 맺어 시간을 재고 바로 닫습니다. 아무것도 보내지 않습니다. `TOWAMORI_LINKS=off`로 끌 수 있습니다.
+- **업데이트는 직접 누를 때만, 서명된 빌드만.** 스스로 업데이트하지 않습니다. 콘솔에서 해당 서버의 "업데이트"를 누르면 에이전트가 Towamori에서 새 빌드를 받아 내장된 공개 키로 Ed25519 서명을 확인한 뒤에야 자신을 교체합니다. `TOWAMORI_UPDATE=off`로 끌 수 있습니다.
 - **다운로드 검증.** 설치 전에 SHA-256을 확인합니다.
 
 <details>
@@ -114,6 +115,7 @@ sudo systemctl daemon-reload
 | 숫자만 보냅니다. | `towamori-agent --once`로 보낼 내용을 전부 출력해 볼 수 있습니다. |
 | 토큰을 평문으로 보내지 않음. | `towamori-agent -token x -endpoint http://example.com`은 시작을 거부합니다. |
 | Towamori 자체 주소에만 연결. | 연결 전에 코드에서 검증합니다: `probe.towamori.com` 아래 이름, 1024 이상의 포트, 사설 주소 불가([`CheckLinkTarget`](protocol/protocol.go)). `sudo ss -tnp \| grep towamori`로 연결을 볼 수 있습니다. |
+| 업데이트는 직접 누를 때만, 서명된 빌드만. | 전체 동작은 [`internal/update`](internal/update)에 있고 공개 키는 [`statement.go`](internal/update/statement.go)에 있습니다. `journalctl -u towamori-agent`에 업데이트가 매번 기록됩니다. |
 | 다운로드 검증. | [`packaging/install.sh`](packaging/install.sh)를 읽어 보세요. 짧습니다. |
 
 </details>
@@ -184,7 +186,7 @@ flowchart LR
 
 - **엔드포인트는 두 개.** 시작할 때 한 번 `hello`로 머신의 기본 정보를 보내고, 이후 측정할 때마다 `report`를 보냅니다.
 - **장애에도 데이터를 잃지 않음.** Towamori에 닿지 않는 동안 최대 360개의 측정값(기본 간격 기준 1시간 분량)을 메모리에 보관했다가, 복구되면 오래된 것부터 보냅니다. 재시도는 지수 백오프로 합니다.
-- **일부러 작고 단순하게.** Go 표준 라이브러리만, 정적 바이너리 하나, 플러그인 없음, 자동 업데이트 없음.
+- **일부러 작고 단순하게.** Go 표준 라이브러리만, 정적 바이너리 하나, 플러그인 없음, 자동 업데이트 없음(콘솔에서 "업데이트"를 눌렀을 때만, Towamori가 서명한 빌드로만 업데이트).
 
 </details>
 
@@ -201,6 +203,7 @@ flowchart LR
 | `-env-file` | | `/etc/towamori/agent.env` | 파일이 없으면 무시합니다. |
 | `-host-root` | `TOWAMORI_HOST_ROOT` | `/` | 컨테이너에서 실행할 때 호스트의 `/`가 마운트된 위치. |
 | `-links` | `TOWAMORI_LINKS` | `on` | 약 1분마다 Towamori 각 지점까지의 연결 시간을 잰다(`on` 또는 `off`). |
+| `-update` | `TOWAMORI_UPDATE` | `on` | 콘솔에서 이 에이전트를 더 새로운 서명된 빌드로 업데이트하도록 허용(`on` 또는 `off`). systemd 설치가 필요합니다(Docker 설치는 불가). |
 | `-once` | | | 한 번 측정해 출력하고 종료합니다. 토큰도 네트워크도 필요 없습니다. |
 | `-print` | | | 보내는 요청 본문을 표준 출력에도 출력합니다. |
 | `-version` | | | 버전을 출력하고 종료합니다. |

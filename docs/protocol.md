@@ -7,8 +7,10 @@ If something is not in here, the agent does not do it.
 
 - The agent makes **outbound HTTPS requests only**. It never listens on a port.
 - There are exactly two endpoints: `hello` and `report`.
-- The platform can change **one thing** on the agent: the reporting interval (5–300 seconds).
-  There is no way for the platform to run commands, read files, or change anything else.
+- The platform can change the reporting interval (5–300 seconds), give it the list of probe locations, and,
+  when the owner presses "Update", offer a newer build that the agent only accepts if it carries Towamori's
+  signature ([Self-update](#self-update)). There is no way for the platform to run commands, read files, or
+  change anything else.
 
 ## Transport
 
@@ -46,7 +48,7 @@ Sent when the agent starts, and again if the platform asks for it (see *Response
 ```json
 {
   "protocol": 1,
-  "agent": { "version": "0.1.0", "os": "linux", "arch": "amd64" },
+  "agent": { "version": "0.3.0", "os": "linux", "arch": "amd64", "self_update": true },
   "host": {
     "hostname": "web-1",
     "machine_id": "3f1c9a0e5b7d2c4a8e6f1b3d5a7c9e0f",
@@ -140,7 +142,7 @@ Success response (`202`):
 { "accepted": 1 }
 ```
 
-A report may also carry `link_rev`, and the response `links`; see [Link measurements](#link-measurements).
+A report may also carry `link_rev`, and the response `links`; see [Link measurements](#link-measurements). The response may carry `update`, and the report `update`; see [Self-update](#self-update).
 
 ## Link measurements
 
@@ -190,6 +192,53 @@ All targets are measured at the same time, each attempt gives up after 3 seconds
 - `min`, `avg`, `max` — milliseconds, over the successful attempts only; omitted when `ok` is 0.
 - `err` — only when every attempt failed: `timeout`, `refused`, `unreachable`, `dns`, `blocked`
   (the name resolved to an address the agent will not use) or `error`.
+
+## Self-update
+
+This is the only thing the platform can ask an agent to do besides sending the reporting interval and the
+link locations, and it is guarded three ways: it happens only after the owner pressed "Update" for that
+server in the console, only an agent that said `"self_update": true` in its hello is ever asked, and the
+agent installs nothing that is not signed by Towamori's release key, which is built into it
+([`internal/update/statement.go`](../internal/update/statement.go)). `TOWAMORI_UPDATE=off` (or `-update off`)
+makes the agent say `"self_update": false`, and it then ignores offers.
+
+**Offer.** The response to a report may carry
+
+```json
+"update": { "version": "0.3.0", "url": "https://app.towamori.com/dl" }
+```
+
+`version` must be a plain release number (`0.3.0`) newer than the one running. `url` is an `https://` folder
+that holds `towamori-agent_<os>_<arch>.tar.gz` and `towamori-agent_<os>_<arch>.tar.gz.sig`.
+
+**What the agent does.** It downloads the `.sig` (at most 4 KiB) and checks the Ed25519 signature. The signed
+text says which version, OS and CPU the build is for and the SHA-256 of the archive and of the
+`towamori-agent` file inside it:
+
+```
+towamori-agent-update v1
+version=0.3.0
+os=linux
+arch=amd64
+archive_sha256=…
+binary_sha256=…
+signature=<base64 of the signature over everything above this line>
+```
+
+Then it downloads the archive (at most 40 MiB), checks it against `archive_sha256`, unpacks only the file named
+`towamori-agent` (nothing else is written anywhere), checks that against `binary_sha256`, keeps it in its state
+directory (systemd's `STATE_DIRECTORY`, which the unit gives it) and starts it in place of itself. Any mismatch
+discards the download. systemd keeps starting the build that `install.sh` put in `/usr/local/bin`; at start-up
+that build checks the signature of the staged one again and starts it instead. A staged build that does not get
+a report accepted in three starts is deleted, the agent goes back to the installed build and reports why.
+
+**Failure.** A report may carry
+
+```json
+"update": { "version": "0.3.0", "error": "the signature is not valid: signature does not match" }
+```
+
+once, after an update did not happen. Versions that failed are not tried again on that server.
 
 ## Responses and agent behaviour
 
