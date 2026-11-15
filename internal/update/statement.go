@@ -15,8 +15,8 @@
 //     answers a report with an offer only then), and TOWAMORI_UPDATE=off
 //     switches the whole thing off on a server.
 //   - The new build is started in place of the old one; if it fails to report
-//     in three tries the agent goes back to the build the package manager
-//     (or install.sh) put there and says why.
+//     in three tries the agent goes back to the build that was running before
+//     (or, failing that, the one install.sh put there) and says why.
 package update
 
 import (

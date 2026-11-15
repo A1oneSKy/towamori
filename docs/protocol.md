@@ -230,7 +230,8 @@ Then it downloads the archive (at most 40 MiB), checks it against `archive_sha25
 directory (systemd's `STATE_DIRECTORY`, which the unit gives it) and starts it in place of itself. Any mismatch
 discards the download. systemd keeps starting the build that `install.sh` put in `/usr/local/bin`; at start-up
 that build checks the signature of the staged one again and starts it instead. A staged build that does not get
-a report accepted in three starts is deleted, the agent goes back to the installed build and reports why.
+a report accepted in three starts is deleted and the agent goes back to the build that was running before it (or
+the installed one) and reports why.
 
 **Failure.** A report may carry
 

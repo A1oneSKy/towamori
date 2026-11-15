@@ -47,6 +47,13 @@ type release struct {
 func newRelease(t *testing.T, version string) *release {
 	t.Helper()
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	return releaseWith(t, pub, priv, version)
+}
+
+// releaseWith makes a release signed by the given key, so that several can be
+// told apart by one agent.
+func releaseWith(t *testing.T, pub ed25519.PublicKey, priv ed25519.PrivateKey, version string) *release {
+	t.Helper()
 	prog := []byte("#!/bin/sh\necho new build " + version + "\n")
 	arc := archiveWith(t, prog)
 	st := Statement{Version: version, OS: goos(), Arch: goarch(), ArchiveSHA: sha(arc), BinarySHA: sha(prog)}
@@ -375,5 +382,54 @@ func TestStateDirFromEnv(t *testing.T) {
 	}
 	if got := StateDirFromEnv(get(nil)); got != "" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestFailedUpdateGoesBackToThePreviousBuild(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	r1, r2 := releaseWith(t, pub, priv, "0.3.1"), releaseWith(t, pub, priv, "0.3.2")
+	s1, s2 := r1.server(t), r2.server(t)
+	u, e := updater(t, r1, "0.3.0") // the installed build is 0.3.0
+	ctx := context.Background()
+
+	if err := u.Apply(ctx, "0.3.1", s1.URL+"/dl"); err != nil {
+		t.Fatal(err)
+	}
+	// Now the process is 0.3.1 and has reported: it works.
+	u.Current = "0.3.1"
+	u.Confirm()
+	if err := u.Apply(ctx, "0.3.2", s2.URL+"/dl"); err != nil {
+		t.Fatal(err)
+	}
+	if st := u.load(); st.Version != "0.3.2" || st.Prev == nil || st.Prev.Version != "0.3.1" {
+		t.Fatalf("state after the second update: %+v", st)
+	}
+
+	// 0.3.2 never gets a report through; systemd keeps starting the installed 0.3.0.
+	u.Current = "0.3.0"
+	e.n = 0
+	for i := 1; i <= maxAttempts; i++ {
+		u.Relaunch()
+		if filepath.Base(e.path) != "towamori-agent-0.3.2" || e.n != i {
+			t.Fatalf("attempt %d: exec %q (%d)", i, e.path, e.n)
+		}
+	}
+	u.Relaunch() // gives up on 0.3.2 and starts 0.3.1 instead of falling all the way back
+	if filepath.Base(e.path) != "towamori-agent-0.3.1" {
+		t.Fatalf("started %q, want 0.3.1", e.path)
+	}
+	st := u.load()
+	if st.Version != "0.3.1" || st.Prev != nil || len(st.Failed) != 1 || st.Failed[0] != "0.3.2" || !strings.Contains(st.LastError, "went back to 0.3.1") {
+		t.Fatalf("state after the fall back: %+v", st)
+	}
+	if _, err := os.Stat(filepath.Join(u.binDir(), "towamori-agent-0.3.2")); err == nil {
+		t.Error("the failed build was kept")
+	}
+	// 0.3.1 comes up and reports: nothing else is left lying around.
+	u.Current = "0.3.1"
+	u.Confirm()
+	entries, _ := os.ReadDir(u.binDir())
+	if len(entries) != 2 {
+		t.Errorf("files in bin/: %v", entries)
 	}
 }

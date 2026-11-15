@@ -110,6 +110,16 @@ type state struct {
 	Failed    []string `json:"failed,omitempty"` // versions that did not work; not offered again
 	LastError string   `json:"last_error,omitempty"`
 	ErrorFor  string   `json:"error_for,omitempty"`
+	// Prev is the staged build that was running (and so known to work) when
+	// the current one was installed. If the current one does not start, the
+	// agent goes back to it rather than all the way to the installed build.
+	Prev *staged `json:"prev,omitempty"`
+}
+
+type staged struct {
+	Version string `json:"version"`
+	Binary  string `json:"binary"`
+	Sig     string `json:"sig"`
 }
 
 func (u *Updater) load() state {
@@ -216,6 +226,17 @@ func (u *Updater) Apply(ctx context.Context, version, base string) error {
 	if err := os.WriteFile(filepath.Join(u.binDir(), sigName), sigRaw, 0o600); err != nil {
 		return err
 	}
+	// The build that is running now works; keep it to go back to.
+	if st.Prev != nil && st.Prev.Binary != name {
+		u.removeStaged(st.Prev.Binary, st.Prev.Sig)
+		st.Prev = nil
+	}
+	switch {
+	case st.Version != "" && st.Version == u.Current && st.Binary != name:
+		st.Prev = &staged{Version: st.Version, Binary: st.Binary, Sig: st.Sig}
+	case st.Version != "" && st.Version != u.Current && st.Binary != name:
+		u.removeStaged(st.Binary, st.Sig) // left over from something that never started
+	}
 	st.Version, st.Binary, st.Sig, st.Attempts = version, name, sigName, 0
 	if err := u.save(st); err != nil {
 		return err
@@ -246,31 +267,39 @@ func (u *Updater) Relaunch() {
 	if u == nil || u.StateDir == "" || os.Getenv(UpdatedEnv) != "" || len(u.Key) == 0 {
 		return
 	}
-	st := u.load()
-	if st.Version == "" {
+	// Twice at most: a build that has failed is dropped and the one before it is tried.
+	for round := 0; round < 2; round++ {
+		st := u.load()
+		if st.Version == "" {
+			return
+		}
+		if !Newer(st.Version, u.Current) {
+			// A reinstall put something at least as new there; the staged build is stale.
+			u.discard(&st, "")
+			return
+		}
+		var reason string
+		if st.Attempts >= maxAttempts {
+			reason = fmt.Sprintf("%s did not report in %d tries", st.Version, maxAttempts)
+		} else if _, err := u.verifyStaged(st); err != nil {
+			reason = fmt.Sprintf("%s failed its check (%v)", st.Version, err)
+		}
+		if reason != "" {
+			if u.discard(&st, reason) {
+				continue // went back to the build before it
+			}
+			return
+		}
+		bin := filepath.Join(u.binDir(), st.Binary)
+		st.Attempts++
+		if err := u.save(st); err != nil {
+			u.logf("update: cannot save state: %v", err)
+			return
+		}
+		if err := u.start(bin, []string{UpdatedEnv + "=1"}); err != nil {
+			u.logf("update: %v; running %s instead", err, u.Current)
+		}
 		return
-	}
-	if !Newer(st.Version, u.Current) {
-		// A reinstall put something at least as new there; the staged build is stale.
-		u.discard(&st, "")
-		return
-	}
-	if st.Attempts >= maxAttempts {
-		u.discard(&st, fmt.Sprintf("%s did not report in %d tries; went back to %s", st.Version, maxAttempts, u.Current))
-		return
-	}
-	bin, err := u.verifyStaged(st)
-	if err != nil {
-		u.discard(&st, fmt.Sprintf("%s failed its check (%v); went back to %s", st.Version, err, u.Current))
-		return
-	}
-	st.Attempts++
-	if err := u.save(st); err != nil {
-		u.logf("update: cannot save state: %v", err)
-		return
-	}
-	if err := u.start(bin, []string{UpdatedEnv + "=1"}); err != nil {
-		u.logf("update: %v; running %s instead", err, u.Current)
 	}
 }
 
@@ -301,21 +330,42 @@ func (u *Updater) verifyStaged(st state) (string, error) {
 	return path, nil
 }
 
-// discard forgets the staged build; reason is kept to be reported once.
-func (u *Updater) discard(st *state, reason string) {
-	if st.Binary != "" && !strings.ContainsAny(st.Binary, "/\\") {
-		os.Remove(filepath.Join(u.binDir(), st.Binary))
+// removeStaged deletes a staged build's files.
+func (u *Updater) removeStaged(binary, sig string) {
+	for _, n := range []string{binary, sig} {
+		if n != "" && !strings.ContainsAny(n, "/\\") {
+			os.Remove(filepath.Join(u.binDir(), n))
+		}
 	}
-	if st.Sig != "" && !strings.ContainsAny(st.Sig, "/\\") {
-		os.Remove(filepath.Join(u.binDir(), st.Sig))
+}
+
+// discard forgets the staged build; reason is kept to be reported once. It
+// reports whether the build before it was put in its place (see Prev).
+func (u *Updater) discard(st *state, reason string) (wentBack bool) {
+	u.removeStaged(st.Binary, st.Sig)
+	failed := st.Version
+	st.Version, st.Binary, st.Sig, st.Attempts = "", "", "", 0
+	if p := st.Prev; p != nil {
+		st.Prev = nil
+		if _, err := u.verifyStaged(state{Version: p.Version, Binary: p.Binary, Sig: p.Sig}); err == nil && Newer(p.Version, u.Current) {
+			st.Version, st.Binary, st.Sig = p.Version, p.Binary, p.Sig
+			wentBack = true
+		} else {
+			u.removeStaged(p.Binary, p.Sig)
+		}
 	}
 	if reason != "" {
-		st.Failed = append(st.Failed, st.Version)
-		st.LastError, st.ErrorFor = reason, st.Version
+		back := u.Current
+		if wentBack {
+			back = st.Version
+		}
+		reason += "; went back to " + back
+		st.Failed = append(st.Failed, failed)
+		st.LastError, st.ErrorFor = reason, failed
 		u.logf("update: %s", reason)
 	}
-	st.Version, st.Binary, st.Sig, st.Attempts = "", "", "", 0
 	_ = u.save(*st)
+	return wentBack
 }
 
 // Confirm is called after the first report that the platform accepted. It
@@ -328,8 +378,12 @@ func (u *Updater) Confirm() {
 	if st.Version == "" || st.Version != u.Current {
 		return
 	}
-	if st.Attempts != 0 {
+	if st.Attempts != 0 || st.Prev != nil {
 		st.Attempts = 0
+		if st.Prev != nil {
+			u.removeStaged(st.Prev.Binary, st.Prev.Sig)
+			st.Prev = nil
+		}
 		_ = u.save(st)
 	}
 	// Older staged builds and half-finished downloads are no longer needed.
